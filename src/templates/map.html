@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}}</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f5f5f5;
+    overflow: hidden;
+    height: 100vh;
+  }
+  header {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    background: #fff;
+    border-bottom: 1px solid #ddd;
+    padding: 12px 20px;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  header h1 {
+    font-size: 16px;
+    font-weight: 600;
+    color: #333;
+  }
+  header .subtitle {
+    font-size: 13px;
+    color: #888;
+  }
+  #canvas-container {
+    position: absolute;
+    top: 48px; left: 0; right: 0; bottom: 0;
+    overflow: hidden;
+    cursor: grab;
+  }
+  #canvas-container.dragging { cursor: grabbing; }
+  #canvas {
+    transform-origin: 0 0;
+    position: absolute;
+  }
+
+  .node {
+    position: absolute;
+    background: #fff;
+    border: 2px solid #333;
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: box-shadow 0.15s;
+  }
+  .node:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    border-color: #0066cc;
+  }
+  .node-label {
+    padding: 8px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #333;
+    background: #f9f9f9;
+    border-bottom: 1px solid #eee;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .node-thumb {
+    width: 100%;
+    height: calc(100% - 36px);
+    object-fit: cover;
+    object-position: top left;
+    display: block;
+  }
+  .node-no-thumb {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: calc(100% - 36px);
+    color: #ccc;
+    font-size: 12px;
+  }
+
+  svg.edges {
+    position: absolute;
+    top: 0; left: 0;
+    pointer-events: none;
+    overflow: visible;
+  }
+  .edge-path {
+    fill: none;
+    stroke: #666;
+    stroke-width: 2;
+  }
+  .edge-arrow {
+    fill: #666;
+  }
+  .edge-label {
+    font-size: 11px;
+    fill: #555;
+    text-anchor: middle;
+    pointer-events: none;
+  }
+  .edge-label-bg {
+    fill: #f5f5f5;
+    opacity: 0.85;
+  }
+
+  /* Lightbox */
+  .lightbox {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.85);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+  .lightbox.open { display: flex; }
+  .lightbox img {
+    max-width: 90vw;
+    max-height: 90vh;
+    border-radius: 4px;
+    box-shadow: 0 0 40px rgba(0,0,0,0.5);
+  }
+  .lightbox-label {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: #fff;
+    font-size: 14px;
+    background: rgba(0,0,0,0.6);
+    padding: 6px 16px;
+    border-radius: 4px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>{{TITLE}}</h1>
+  <span class="subtitle">{{SUBTITLE}}</span>
+</header>
+
+<div id="canvas-container">
+  <div id="canvas">
+    {{CONTENT}}
+  </div>
+</div>
+
+<div class="lightbox" id="lightbox">
+  <img id="lightbox-img" src="" alt="">
+  <div class="lightbox-label" id="lightbox-label"></div>
+</div>
+
+<script>
+// Pan and zoom
+const container = document.getElementById('canvas-container');
+const canvas = document.getElementById('canvas');
+let scale = 1, panX = 40, panY = 40;
+let isDragging = false, startX, startY;
+
+function updateTransform() {
+  canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+}
+updateTransform();
+
+container.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const rect = container.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const delta = e.deltaY > 0 ? 0.9 : 1.1;
+  const newScale = Math.min(Math.max(scale * delta, 0.1), 3);
+  panX = mx - (mx - panX) * (newScale / scale);
+  panY = my - (my - panY) * (newScale / scale);
+  scale = newScale;
+  updateTransform();
+}, { passive: false });
+
+container.addEventListener('pointerdown', (e) => {
+  if (e.target.closest('.node')) return;
+  isDragging = true;
+  startX = e.clientX - panX;
+  startY = e.clientY - panY;
+  container.classList.add('dragging');
+  container.setPointerCapture(e.pointerId);
+});
+container.addEventListener('pointermove', (e) => {
+  if (!isDragging) return;
+  panX = e.clientX - startX;
+  panY = e.clientY - startY;
+  updateTransform();
+});
+container.addEventListener('pointerup', () => {
+  isDragging = false;
+  container.classList.remove('dragging');
+});
+
+// Lightbox
+const lightbox = document.getElementById('lightbox');
+const lightboxImg = document.getElementById('lightbox-img');
+const lightboxLabel = document.getElementById('lightbox-label');
+
+document.querySelectorAll('.node[data-screenshot]').forEach(node => {
+  node.addEventListener('click', () => {
+    lightboxImg.src = node.dataset.screenshot;
+    lightboxLabel.textContent = node.dataset.label || '';
+    lightbox.classList.add('open');
+  });
+});
+
+lightbox.addEventListener('click', () => lightbox.classList.remove('open'));
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') lightbox.classList.remove('open');
+});
+</script>
+</body>
+</html>

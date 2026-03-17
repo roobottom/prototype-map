@@ -1,0 +1,33 @@
+{
+  "name": "prototype-map",
+  "version": "1.0.0",
+  "description": "Screenshot capture and journey map generator for prototypes",
+  "type": "module",
+  "bin": {
+    "prototype-map": "./bin/prototype-map.js"
+  },
+  "scripts": {
+    "serve": "node bin/prototype-map.js serve",
+    "record": "node bin/prototype-map.js record",
+    "capture": "node bin/prototype-map.js capture",
+    "map": "node bin/prototype-map.js map",
+    "run": "node bin/prototype-map.js run",
+    "test": "vitest run"
+  },
+  "keywords": [
+    "prototype",
+    "screenshot",
+    "journey-map",
+    "design"
+  ],
+  "license": "ISC",
+  "dependencies": {
+    "ajv": "^8.18.0",
+    "commander": "^14.0.3",
+    "cors": "^2.8.6",
+    "elkjs": "^0.11.1",
+    "express": "^5.2.1",
+    "js-yaml": "^4.1.1",
+    "playwright": "^1.58.2"
+  }
+}

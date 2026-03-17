@@ -1,0 +1,126 @@
+name: Round 1
+baseUrl: http://localhost:3000
+viewport:
+  width: 1280
+  height: 900
+round: 1
+pages:
+  - id: sites-site_3-availability
+    path: /sites/site_3/availability
+    label: Availability — Dean’s Pharmacy – Manage Your Appointments – NHS
+  - id: sites-site_3-add-availability
+    path: /sites/site_3/add-availability
+    label: Add availability — Dean’s Pharmacy – Manage Your Appointments – NHS
+    states:
+      - id: submitted
+        label: Form submitted
+        formData:
+          - field: "#type-2"
+            action: check
+        submit: true
+  - id: sites-site_3-add-availability-recurring-details
+    path: /sites/site_3/add-availability/recurring/details
+    label: Session details — Dean’s Pharmacy – Manage Your Appointments – NHS
+    states:
+      - id: submitted
+        label: Form submitted
+        formData:
+          - field: "#label"
+            value: brian!
+          - field: "#startDate-day"
+            value: "1"
+          - field: "#startDate-month"
+            value: "1"
+          - field: "#startDate-year"
+            value: "2027"
+          - field: "#endDate-day"
+            value: "1"
+          - field: "#endDate-month"
+            value: "1"
+          - field: "#endDate-year"
+            value: "2028"
+        submit: true
+  - id: sites-site_3-add-availability-recurring-vaccinators
+    path: /sites/site_3/add-availability/recurring/vaccinators
+    label: Vaccinators — Dean’s Pharmacy – Manage Your Appointments – NHS
+    states:
+      - id: submitted
+        label: Form submitted
+        formData:
+          - field: "#vaccinatorCount"
+            value: ""
+          - field: "#hasMultipleVaccinators-2"
+            action: check
+        submit: true
+  - id: sites-site_3-add-availability-recurring-day-pattern
+    path: /sites/site_3/add-availability/recurring/day-pattern
+    label: Day pattern — Dean’s Pharmacy – Manage Your Appointments – NHS
+    states:
+      - id: submitted
+        label: Form submitted
+        formData:
+          - field: "#dayPattern"
+            action: check
+          - field: "#dayPattern-2"
+            action: uncheck
+          - field: "#dayPattern-3"
+            action: check
+          - field: "#dayPattern-4"
+            action: check
+          - field: "#dayPattern-5"
+            action: uncheck
+          - field: "#dayPattern-6"
+            action: uncheck
+          - field: "#dayPattern-7"
+            action: uncheck
+        submit: true
+  - id: sites-site_3-add-availability-recurring-times
+    path: /sites/site_3/add-availability/recurring/times
+    label: Session times – Manage Your Appointments – NHS
+    states:
+      - id: submitted
+        label: Form submitted
+        formData:
+          - field: button:has-text("Add another")
+            action: click
+          - field: "#start-time-1"
+            value: 9am
+          - field: "#end-time-1"
+            value: 12pm
+          - field: "#start-time-2"
+            value: 1pm
+          - field: "#end-time-2"
+            value: 6pm
+        submit: true
+  - id: sites-site_3-add-availability-recurring-booking-length
+    path: /sites/site_3/add-availability/recurring/booking-length
+    label: How long do you need for each appointment? – Manage Your Appointments – NHS
+    states:
+      - id: submitted
+        label: Form submitted
+        formData:
+          - field: "#slotLength"
+            value: "10"
+        submit: true
+  - id: sites-site_3-add-availability-recurring-services
+    path: /sites/site_3/add-availability/recurring/services
+    label: Services — Dean’s Pharmacy – Manage Your Appointments – NHS
+journeys:
+  - id: recorded
+    label: Recorded journey
+    steps:
+      - from: sites-site_3-availability
+        to: sites-site_3-add-availability
+      - from: sites-site_3-add-availability
+        to: sites-site_3-add-availability-recurring-details
+      - from: sites-site_3-add-availability-recurring-details
+        to: sites-site_3-add-availability-recurring-vaccinators
+      - from: sites-site_3-add-availability-recurring-vaccinators
+        to: sites-site_3-add-availability-recurring-day-pattern
+      - from: sites-site_3-add-availability-recurring-day-pattern
+        to: sites-site_3-add-availability-recurring-times
+      - from: sites-site_3-add-availability-recurring-times
+        to: sites-site_3-add-availability-recurring-booking-length
+      - from: sites-site_3-add-availability-recurring-booking-length
+        to: sites-site_3-add-availability-recurring-services
+description: Adding availability
