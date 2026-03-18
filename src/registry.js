@@ -19,12 +19,12 @@ export function loadRegistry() {
 
 /**
  * Register a project. Upserts by path — if a project with the same
- * path already exists, it updates the name and port.
+ * path already exists, it updates the name and baseUrl.
  */
-export function registerProject({ name, path, port }) {
+export function registerProject({ name, path, baseUrl }) {
   const projects = loadRegistry();
   const idx = projects.findIndex(p => p.path === path);
-  const entry = { name, path, port: port || 4444 };
+  const entry = { name, path, baseUrl: baseUrl || 'http://localhost:3000' };
 
   if (idx >= 0) {
     projects[idx] = entry;

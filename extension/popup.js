@@ -50,7 +50,6 @@ async function loadProjects(savedProjectPath) {
       const opt = document.createElement('option');
       opt.value = project.path;
       opt.textContent = project.name;
-      opt.dataset.port = project.port;
       if (project.path === savedProjectPath) {
         opt.selected = true;
       }
@@ -66,13 +65,8 @@ async function loadProjects(savedProjectPath) {
   }
 }
 
-// When project changes, update the port to match
-projectSelect.addEventListener('change', () => {
-  const selected = projectSelect.selectedOptions[0];
-  if (selected && selected.dataset.port) {
-    portInput.value = selected.dataset.port;
-  }
-});
+
+
 
 async function refreshStatus() {
   try {

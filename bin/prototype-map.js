@@ -15,10 +15,10 @@ program
 
 program
   .command('init')
-  .description('Initialize a new prototype-map project in the current directory')
+  .description('Register a prototype project for use with the extension')
   .option('-n, --name <name>', 'Project name')
+  .option('--path <path>', 'Path to the prototype project')
   .option('-u, --url <url>', 'Base URL of the prototype')
-  .option('-p, --port <n>', 'Default server port')
   .action(async (opts) => {
     const { init } = await import('../src/init.js');
     await init(opts);
