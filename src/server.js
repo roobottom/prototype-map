@@ -14,10 +14,11 @@ export async function startServer(opts) {
   // In-memory recording state
   const state = {
     isRecording: false,
+    append: false,
     baseUrl: null,
     name: '',
     description: '',
-    pages: new Map(),     // path → { id, path, label, formData[] }
+    pages: new Map(),     // path → { id, path, label, formSubmissions[], params: Set }
     edges: [],            // { from, to, label }
     lastPageId: null,
     lastClickText: null,
@@ -44,6 +45,7 @@ export async function startServer(opts) {
   // POST /api/recording/start — begin recording
   app.post('/api/recording/start', (req, res) => {
     state.isRecording = true;
+    state.append = req.body.append || false;
     state.baseUrl = req.body.baseUrl || null;
     state.name = req.body.name || '';
     state.description = req.body.description || '';
@@ -51,7 +53,7 @@ export async function startServer(opts) {
     state.edges = [];
     state.lastPageId = null;
     state.lastClickText = null;
-    console.log(`Recording started${state.baseUrl ? ` for ${state.baseUrl}` : ''}`);
+    console.log(`Recording started${state.append ? ' (append mode)' : ''}${state.baseUrl ? ` for ${state.baseUrl}` : ''}`);
     res.json({ ok: true });
   });
 
@@ -95,11 +97,17 @@ export async function startServer(opts) {
         id: pageId,
         path,
         label: title || pageId,
-        formSubmissions: []
+        formSubmissions: [],
+        params: new Set()
       });
     } else if (title) {
       // Update label if we get a better title
       state.pages.get(path).label = title;
+    }
+
+    // Track query parameters as potential states
+    for (const key of parsed.searchParams.keys()) {
+      state.pages.get(path).params.add(key);
     }
 
     // Record edge from previous page
@@ -139,7 +147,8 @@ export async function startServer(opts) {
         id: pathToId(path),
         path,
         label: '',
-        formSubmissions: []
+        formSubmissions: [],
+        params: new Set()
       });
     }
 
@@ -181,9 +190,12 @@ function buildConfig(state, configPath) {
     const entry = { id: p.id, path: p.path };
     if (p.label) entry.label = p.label;
 
+    const states = [];
+
     // Convert form submissions into states with formData
     if (p.formSubmissions && p.formSubmissions.length > 0) {
-      entry.states = p.formSubmissions.map((submission, i) => {
+      for (let i = 0; i < p.formSubmissions.length; i++) {
+        const submission = p.formSubmissions[i];
         const stateEntry = {
           id: i === 0 ? 'submitted' : `submitted-${i + 1}`,
           label: i === 0 ? 'Form submitted' : `Form submitted (${i + 1})`
@@ -212,8 +224,23 @@ function buildConfig(state, configPath) {
           stateEntry.submit = true;
         }
 
-        return stateEntry;
-      });
+        states.push(stateEntry);
+      }
+    }
+
+    // Convert detected query parameters into states
+    if (p.params && p.params.size > 0) {
+      for (const param of p.params) {
+        states.push({
+          id: param,
+          label: `With ${param}`,
+          params: { [param]: 'true' }
+        });
+      }
+    }
+
+    if (states.length > 0) {
+      entry.states = states;
     }
 
     return entry;
@@ -234,17 +261,38 @@ function buildConfig(state, configPath) {
     return step;
   });
 
+  const newJourney = journeySteps.length > 0 ? {
+    id: `recorded-${Date.now()}`,
+    label: state.name || 'Recorded journey',
+    steps: journeySteps
+  } : null;
+
+  // Append mode: merge into existing config
+  if (state.append && existingConfig) {
+    const existingPageIds = new Set(existingConfig.pages.map(p => p.id));
+    for (const page of pagesList) {
+      if (!existingPageIds.has(page.id)) {
+        existingConfig.pages.push(page);
+      }
+    }
+    if (newJourney) {
+      existingConfig.journeys = existingConfig.journeys || [];
+      existingConfig.journeys.push(newJourney);
+    }
+    if (state.description) {
+      existingConfig.description = state.description;
+    }
+    return existingConfig;
+  }
+
+  // Fresh config
   const config = {
     name: state.name || pagesList[0]?.label || 'Recorded prototype',
     baseUrl: state.baseUrl || 'http://localhost:3000',
     viewport: { width: 1280, height: 900 },
     round: 1,
     pages: pagesList,
-    journeys: journeySteps.length > 0 ? [{
-      id: 'recorded',
-      label: 'Recorded journey',
-      steps: journeySteps
-    }] : []
+    journeys: newJourney ? [newJourney] : []
   };
 
   if (state.description) {

@@ -8,7 +8,6 @@
   },
   "scripts": {
     "serve": "node bin/prototype-map.js serve",
-    "record": "node bin/prototype-map.js record",
     "capture": "node bin/prototype-map.js capture",
     "map": "node bin/prototype-map.js map",
     "run": "node bin/prototype-map.js run",

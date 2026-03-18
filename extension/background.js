@@ -67,7 +67,7 @@ async function handleMessage(message, sender) {
 
   switch (message.type) {
     case 'recording/start': {
-      const { port, tabId, name, description } = message.payload;
+      const { port, tabId, name, description, append } = message.payload;
 
       // Tell the server to start
       try {
@@ -78,7 +78,8 @@ async function handleMessage(message, sender) {
           body: JSON.stringify({
             baseUrl: new URL(tab.url).origin,
             name: name || '',
-            description: description || ''
+            description: description || '',
+            append: append || false
           })
         });
 

@@ -23,19 +23,15 @@ npx playwright install chromium
 
 ## Quick start
 
-There are two ways to record a journey: the **browser extension** (recommended) or the **CLI recorder**.
+### 1. Install the browser extension
 
-### Option A: Browser extension (recommended)
-
-The extension runs in your normal Chrome, captures navigation and form submissions, and writes the config file. It's the better option for form-heavy prototypes because it captures what you actually type.
-
-**Install the extension:**
+The extension runs in your normal Chrome, captures navigation, form submissions, and click interactions, then writes the config file.
 
 1. Open Chrome and go to `chrome://extensions`
 2. Enable "Developer mode" (top right toggle)
 3. Click "Load unpacked" and select the `extension/` folder in this project
 
-**Record a journey:**
+### 2. Record a journey
 
 1. Start the recording server:
    ```bash
@@ -43,24 +39,17 @@ The extension runs in your normal Chrome, captures navigation and form submissio
    ```
 2. Open your prototype in Chrome (e.g. `http://localhost:3000`)
 3. Click the Prototype Map extension icon in the toolbar
-4. Check the port matches (default: 4444) and click **Start recording**
-5. Click through your prototype — every page navigation and form submission is captured
-6. When done, click **Stop recording** in the extension popup
-7. The server writes `prototype-map.yaml` and logs a summary
+4. Give your recording a name (e.g. "Round 1") and optional description
+5. Check the port matches (default: 4444) and click **Start recording**
+6. Click through your prototype — every page navigation, form submission, and click interaction is captured
+7. When done, click **Stop recording** in the extension popup
+8. The server writes `prototype-map.yaml` and logs a summary
 
-### Option B: CLI recorder (no extension needed)
+To add a second journey to an existing config, tick **Append to existing config** before starting. This keeps your existing pages and adds a new journey.
 
-```bash
-npx prototype-map record http://localhost:3000
-```
+### 3. Edit the config
 
-A browser window opens. Click through your prototype as a user would. When you're done, close the browser. A `prototype-map.yaml` config file appears in your current directory.
-
-Note: the CLI recorder tracks page navigation and click targets but does not capture form field values. Use the browser extension if your journey involves filling in forms.
-
-### 2. Edit the config
-
-Open `prototype-map.yaml`. The recorder captures the basics — pages visited, the order, link text — but you'll want to refine it. Add labels, define page states, and describe the journeys.
+Open `prototype-map.yaml`. The recorder captures the basics — pages visited, form data, the order, link text — but you'll want to refine it. Add labels, define page states, and describe the journeys.
 
 Here's what a config looks like:
 
@@ -114,15 +103,15 @@ journeys:
 
 Pages and journeys are separate concerns. Pages define what exists. Journeys define how they connect.
 
-### 3. Capture screenshots
+### 4. Capture screenshots
 
 ```bash
-npx prototype-map capture
+npm run capture
 ```
 
-Screenshots land in `prototype-map-output/screenshots/round-1/`. Each page gets a PNG. States get their own: `name--blank.png`, `name--error.png`, `name--prefilled.png`.
+Screenshots land in `prototype-map-output/screenshots/round-1/`. Each page gets a PNG with a step number prefix for easy sorting: `01-start.png`, `02-name--blank.png`, `03-name--error.png`.
 
-### 4. Generate a journey map
+### 5. Generate a journey map
 
 ```bash
 npx prototype-map map --format all
@@ -133,7 +122,7 @@ This produces an interactive HTML file (with pan, zoom, and a lightbox for full 
 ### Or do both at once
 
 ```bash
-npx prototype-map run --format all --embed-screenshots
+npm run run -- --format all --embed-screenshots
 ```
 
 ## Commands
@@ -141,7 +130,6 @@ npx prototype-map run --format all --embed-screenshots
 | Command | What it does |
 |---|---|
 | `serve` | Start the recording server for the browser extension |
-| `record <url>` | Record via CLI (opens a browser, no extension needed) |
 | `capture` | Take screenshots from config |
 | `map` | Generate journey map |
 | `run` | Capture + map in one step |
@@ -195,6 +183,7 @@ states:
       - { field: "#email", value: "bad" }
       - { field: "#agree", action: check }
       - { field: "#country", value: "Wales", action: select }
+      - { field: "button:has-text(\"Add another\")", action: click }
     submit: true
 ```
 
@@ -203,7 +192,10 @@ Fills in form fields and optionally submits. Supported actions:
 - **Text fields**: `{ field: "#name", value: "Jo Smith" }`
 - **Checkboxes**: `{ field: "#agree", action: check }` or `action: uncheck`
 - **Dropdowns**: `{ field: "#country", value: "Wales", action: select }`
+- **Click**: `{ field: "button:has-text(\"Add another\")", action: click }` — clicks an element (e.g. to reveal hidden fields)
 - **Submit**: `submit: true` clicks the submit button. Use `submit: ".my-button"` for a specific button.
+
+The browser extension captures all of these automatically during recording, including clicks that trigger DOM changes (like "Add another" buttons that reveal extra form fields).
 
 ### Setup scripts
 
@@ -247,13 +239,13 @@ This makes it easy to compare screenshots across design rounds for blog posts or
 prototype-map-output/
 ├── screenshots/
 │   ├── round-1/
-│   │   ├── start.png
-│   │   ├── name--blank.png
-│   │   ├── name--error.png
-│   │   ├── name--prefilled.png
-│   │   ├── address.png
-│   │   ├── check.png
-│   │   └── done.png
+│   │   ├── 01-start.png
+│   │   ├── 02-name--blank.png
+│   │   ├── 03-name--error.png
+│   │   ├── 04-name--prefilled.png
+│   │   ├── 05-address.png
+│   │   ├── 06-check.png
+│   │   └── 07-done.png
 │   └── round-2/
 │       └── ...
 └── maps/

@@ -24,18 +24,6 @@ program
   });
 
 program
-  .command('record <url>')
-  .description('Record a journey by clicking through a prototype (no extension needed)')
-  .option('-c, --config <path>', 'Config file path', 'prototype-map.yaml')
-  .option('-n, --name <name>', 'Name for the recording (e.g. "Round 1")')
-  .option('-d, --description <text>', 'Description of the recording')
-  .option('--append', 'Add to existing config instead of overwriting')
-  .action(async (url, opts) => {
-    const { record } = await import('../src/record.js');
-    await record(url, opts);
-  });
-
-program
   .command('capture')
   .description('Take screenshots of pages and states defined in config')
   .option('-c, --config <path>', 'Config file path', 'prototype-map.yaml')
