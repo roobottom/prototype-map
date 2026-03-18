@@ -48,28 +48,47 @@ function screenshotName(stepNumber, pageId, stateId) {
 async function fillForm(browserPage, formData) {
   for (const entry of formData) {
     try {
-      // Check the field exists before interacting (short timeout)
+      // Check the field exists and is visible before interacting.
+      // Using 'visible' not 'attached' — fields hidden behind conditionals
+      // (e.g. shown only when a radio is "Yes") are in the DOM but not visible,
+      // and Playwright's fill/check would hang for 30s waiting for visibility.
       const locator = browserPage.locator(entry.field);
-      await locator.waitFor({ state: 'attached', timeout: 3000 });
+      await locator.waitFor({ state: 'visible', timeout: 1000 });
 
       if (entry.action === 'click') {
-        await locator.click();
-        // Wait for any JS-triggered DOM changes to complete
-        await browserPage.waitForTimeout(1000);
+        await locator.click({ timeout: 2000 });
+        // Wait for any JS-triggered DOM changes to settle
+        await browserPage.waitForTimeout(300);
       } else if (entry.action === 'check') {
-        await locator.check();
+        await locator.check({ timeout: 2000 });
       } else if (entry.action === 'uncheck') {
-        await locator.uncheck();
+        await locator.uncheck({ timeout: 2000 });
       } else if (entry.action === 'select') {
-        await locator.selectOption(entry.value);
+        await locator.selectOption(entry.value, { timeout: 2000 });
       } else {
-        await locator.fill(entry.value ?? '');
+        await locator.fill(entry.value ?? '', { timeout: 2000 });
       }
     } catch {
       console.warn(`    SKIP: field "${entry.field}" not found on page`);
     }
   }
 }
+
+/**
+ * Script injected into every page to hide BrowserSync's notification.
+ * Runs as an init script so it executes before page JS.
+ */
+const HIDE_BROWSERSYNC = `
+  (function() {
+    const style = document.createElement('style');
+    style.textContent = '#__bs_notify__ { display: none !important; }';
+    if (document.head) {
+      document.head.appendChild(style);
+    } else {
+      document.addEventListener('DOMContentLoaded', () => document.head.appendChild(style));
+    }
+  })();
+`;
 
 /**
  * Submit a form on the page.
@@ -81,10 +100,9 @@ async function submitForm(browserPage, submit) {
     : 'button[type="submit"], input[type="submit"]';
   try {
     const locator = browserPage.locator(submitSelector);
-    await locator.waitFor({ state: 'attached', timeout: 3000 });
+    await locator.waitFor({ state: 'attached', timeout: 1000 });
     await locator.click();
     await browserPage.waitForLoadState('load');
-    await browserPage.waitForTimeout(500);
   } catch {
     console.warn(`    SKIP: submit button "${submitSelector}" not found`);
   }
@@ -132,6 +150,7 @@ async function captureJourney(config, journey, pageMap, screenshotDir, opts) {
       height: config.viewport.height
     }
   });
+  await context.addInitScript(HIDE_BROWSERSYNC);
   const browserPage = await context.newPage();
 
   const captured = new Set();
@@ -186,11 +205,24 @@ async function captureJourney(config, journey, pageMap, screenshotDir, opts) {
           await browserPage.waitForTimeout(500);
         }
 
-        // Screenshot (only if we haven't captured this exact state yet)
+        // Screenshot before submit (captures filled form).
+        // Then submit — if we stay on the same page (validation error),
+        // re-screenshot to capture the error state instead.
         if (!captured.has(captureKey)) {
           const filename = screenshotName(stepNumber, page.id, state?.id);
           const filepath = join(screenshotDir, filename);
           await browserPage.screenshot({ path: filepath, fullPage: true });
+
+          if (state?.submit) {
+            const pathBefore = new URL(browserPage.url()).pathname;
+            await submitForm(browserPage, state.submit);
+            const pathAfter = new URL(browserPage.url()).pathname;
+            // If we stayed on the same page (error), re-screenshot to show errors
+            if (pathBefore === pathAfter) {
+              await browserPage.screenshot({ path: filepath, fullPage: true });
+            }
+          }
+
           const title = state?.label || page.label || page.id;
           console.log(`  ${filename} - ${title}`);
           manifest.push({
@@ -204,12 +236,8 @@ async function captureJourney(config, journey, pageMap, screenshotDir, opts) {
           capturedCount++;
           captured.add(captureKey);
           stepNumber++;
-        }
-
-        // Submit to advance the session.
-        // For intermediate states (not the last), submit to reset and re-navigate.
-        // For the last state, submit to advance to the next page in the journey.
-        if (state?.submit) {
+        } else if (state?.submit) {
+          // Already captured but still need to submit to advance the journey
           await submitForm(browserPage, state.submit);
         }
       } catch (err) {
@@ -293,6 +321,7 @@ async function captureIndependent(config, pages, screenshotDir, opts) {
           height: config.viewport.height
         }
       });
+      await context.addInitScript(HIDE_BROWSERSYNC);
 
       if (state?.cookies) {
         await context.addCookies(toCookies(config.baseUrl, state.cookies));
@@ -312,7 +341,6 @@ async function captureIndependent(config, pages, screenshotDir, opts) {
           const setupFn = new Function('page', 'baseUrl', `return (async () => { ${state.setup} })()`);
           await setupFn(browserPage, config.baseUrl);
           await browserPage.waitForLoadState('load');
-        await browserPage.waitForTimeout(500);
         }
 
         // Screenshot with form filled in (before submit)
