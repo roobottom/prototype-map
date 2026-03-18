@@ -1,5 +1,5 @@
-import { readFileSync, writeFileSync } from 'fs';
-import { resolve } from 'path';
+import { readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { resolve, dirname } from 'path';
 import yaml from 'js-yaml';
 import Ajv from 'ajv';
 
@@ -19,7 +19,7 @@ const schema = {
     round: { type: 'number', default: 1 },
     pages: {
       type: 'array',
-      minItems: 1,
+      minItems: 0,
       items: {
         type: 'object',
         required: ['id', 'path'],
@@ -130,6 +130,7 @@ export function loadConfig(configPath) {
  */
 export function writeConfig(configPath, config) {
   const fullPath = resolve(configPath);
+  mkdirSync(dirname(fullPath), { recursive: true });
   const yamlStr = yaml.dump(config, {
     lineWidth: -1,
     noRefs: true,

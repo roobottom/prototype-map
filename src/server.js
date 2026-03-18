@@ -3,6 +3,7 @@ import cors from 'cors';
 import { resolve } from 'path';
 import { existsSync } from 'fs';
 import { loadConfig, writeConfig } from './config.js';
+import { loadRegistry } from './registry.js';
 
 /**
  * Start the recording server that receives events from the browser extension.
@@ -17,6 +18,7 @@ export async function startServer(opts) {
     round: 1,
     baseUrl: null,
     name: '',
+    projectPath: '',      // project directory selected from extension
     pages: new Map(),     // path → { id, path, label, formSubmissions[], params: Set }
     edges: [],            // { from, to, label }
     lastPageId: null,
@@ -31,6 +33,16 @@ export async function startServer(opts) {
   const app = express();
   app.use(cors());
   app.use(express.json({ limit: '1mb' }));
+
+  // GET /api/projects — list registered projects
+  app.get('/api/projects', (req, res) => {
+    try {
+      const projects = loadRegistry();
+      res.json(projects);
+    } catch {
+      res.status(500).json({ error: 'Failed to load project registry' });
+    }
+  });
 
   // GET /api/recording — status
   app.get('/api/recording', (req, res) => {
@@ -47,11 +59,12 @@ export async function startServer(opts) {
     state.round = req.body.round || 1;
     state.baseUrl = req.body.baseUrl || null;
     state.name = req.body.name || '';
+    state.projectPath = req.body.projectPath || '';
     state.pages.clear();
     state.edges = [];
     state.lastPageId = null;
     state.lastClickText = null;
-    console.log(`Recording started (round ${state.round})${state.baseUrl ? ` for ${state.baseUrl}` : ''}`);
+    console.log(`Recording started (round ${state.round})${state.baseUrl ? ` for ${state.baseUrl}` : ''}${state.projectPath ? ` → ${state.projectPath}` : ''}`);
     res.json({ ok: true });
   });
 
@@ -60,8 +73,13 @@ export async function startServer(opts) {
     state.isRecording = false;
     console.log('Recording stopped');
 
-    const config = buildConfig(state, configPath);
-    const writtenPath = writeConfig(configPath, config);
+    // Write to the selected project's config, or fall back to the server's default
+    const targetConfig = state.projectPath
+      ? resolve(state.projectPath, '.prototype-map', 'config.yaml')
+      : configPath;
+
+    const config = buildConfig(state, targetConfig);
+    const writtenPath = writeConfig(targetConfig, config);
 
     console.log(`\nRecorded ${state.pages.size} page(s) and ${state.edges.length} connection(s)`);
     console.log(`Config written to: ${writtenPath}`);

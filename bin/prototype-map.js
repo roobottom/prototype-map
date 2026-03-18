@@ -14,6 +14,17 @@ program
   .version(pkg.version);
 
 program
+  .command('init')
+  .description('Initialize a new prototype-map project in the current directory')
+  .option('-n, --name <name>', 'Project name')
+  .option('-u, --url <url>', 'Base URL of the prototype')
+  .option('-p, --port <n>', 'Default server port')
+  .action(async (opts) => {
+    const { init } = await import('../src/init.js');
+    await init(opts);
+  });
+
+program
   .command('serve')
   .description('Start the recording server for the browser extension')
   .option('-c, --config <path>', 'Config file path', '.prototype-map/config.yaml')
