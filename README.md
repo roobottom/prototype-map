@@ -39,17 +39,17 @@ The extension runs in your normal Chrome, captures navigation, form submissions,
    ```
 2. Open your prototype in Chrome (e.g. `http://localhost:3000`)
 3. Click the Prototype Map extension icon in the toolbar
-4. Give your recording a name (e.g. "Round 1") and optional description
+4. Give your recording a name (e.g. "Adding availability") and set the round number
 5. Check the port matches (default: 4444) and click **Start recording**
 6. Click through your prototype — every page navigation, form submission, and click interaction is captured
 7. When done, click **Stop recording** in the extension popup
-8. The server writes `prototype-map.yaml` and logs a summary
+8. The server writes `.prototype-map/config.yaml` and logs a summary
 
-To add a second journey to an existing config, tick **Append to existing config** before starting. This keeps your existing pages and adds a new journey.
+To add more journeys, just record again with a different name. Recording with the same name replaces the existing journey.
 
 ### 3. Edit the config
 
-Open `prototype-map.yaml`. The recorder captures the basics — pages visited, form data, the order, link text — but you'll want to refine it. Add labels, define page states, and describe the journeys.
+Open `.prototype-map/config.yaml`. The recorder captures the basics — pages visited, form data, the order, link text — but you'll want to refine it. Add labels, define page states, and describe the journeys.
 
 Here's what a config looks like:
 
@@ -109,7 +109,7 @@ Pages and journeys are separate concerns. Pages define what exists. Journeys def
 npm run capture
 ```
 
-Screenshots land in `prototype-map-output/screenshots/round-1/`. Each page gets a PNG with a step number prefix for easy sorting: `01-start.png`, `02-name--blank.png`, `03-name--error.png`. A `manifest.json` is also generated with metadata for each screenshot (title, URL, timestamp).
+Screenshots land in `.prototype-map/output/screenshots/round-1/`. Each page gets a PNG with a step number prefix for easy sorting: `01-start.png`, `02-name--blank.png`, `03-name--error.png`. A `manifest.json` is also generated with metadata for each screenshot (title, URL, timestamp).
 
 ### 5. Generate a journey map
 
@@ -117,7 +117,7 @@ Screenshots land in `prototype-map-output/screenshots/round-1/`. Each page gets 
 npx prototype-map map --format all
 ```
 
-This produces an interactive HTML file (with pan, zoom, and a lightbox for full screenshots) plus a static PNG and SVG for pasting into blog posts or slide decks. Output goes to `prototype-map-output/maps/`.
+This produces an interactive HTML file (with pan, zoom, and a lightbox for full screenshots) plus a static PNG and SVG for pasting into blog posts or slide decks. Output goes to `.prototype-map/output/maps/`.
 
 ### Or do both at once
 
@@ -138,8 +138,8 @@ npm run run -- --format all --embed-screenshots
 ### Common options
 
 ```
--c, --config <path>       Config file (default: prototype-map.yaml)
--o, --out <dir>           Output directory (default: prototype-map-output)
+-c, --config <path>       Config file (default: .prototype-map/config.yaml)
+-o, --out <dir>           Output directory (default: .prototype-map/output)
 --round <n>               Override the round number
 --page <id>               Capture a specific page only
 --journey <id>            Capture/map a specific journey only
@@ -216,10 +216,10 @@ states:
 
 ## Rounds
 
-Bump the `round` number in your config each design iteration. Screenshots are organised by round:
+Set the round number in the extension when recording. Screenshots are organised by round:
 
 ```
-prototype-map-output/
+.prototype-map/output/
   screenshots/
     round-1/
     round-2/
@@ -275,7 +275,7 @@ The manifest contains structured metadata for each screenshot:
 ## Output
 
 ```
-prototype-map-output/
+.prototype-map/output/
 ├── screenshots/
 │   ├── round-1/
 │   │   ├── manifest.json

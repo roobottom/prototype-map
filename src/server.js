@@ -14,10 +14,9 @@ export async function startServer(opts) {
   // In-memory recording state
   const state = {
     isRecording: false,
-    append: false,
+    round: 1,
     baseUrl: null,
     name: '',
-    description: '',
     pages: new Map(),     // path → { id, path, label, formSubmissions[], params: Set }
     edges: [],            // { from, to, label }
     lastPageId: null,
@@ -45,15 +44,14 @@ export async function startServer(opts) {
   // POST /api/recording/start — begin recording
   app.post('/api/recording/start', (req, res) => {
     state.isRecording = true;
-    state.append = req.body.append || false;
+    state.round = req.body.round || 1;
     state.baseUrl = req.body.baseUrl || null;
     state.name = req.body.name || '';
-    state.description = req.body.description || '';
     state.pages.clear();
     state.edges = [];
     state.lastPageId = null;
     state.lastClickText = null;
-    console.log(`Recording started${state.append ? ' (append mode)' : ''}${state.baseUrl ? ` for ${state.baseUrl}` : ''}`);
+    console.log(`Recording started (round ${state.round})${state.baseUrl ? ` for ${state.baseUrl}` : ''}`);
     res.json({ ok: true });
   });
 
@@ -173,20 +171,20 @@ export async function startServer(opts) {
 }
 
 /**
- * Build a prototype-map config from recorded state.
+ * Slugify a string into a URL/ID-safe form.
  */
-function buildConfig(state, configPath) {
-  // Try to load existing config for merging
-  let existingConfig = null;
-  if (existsSync(configPath)) {
-    try {
-      existingConfig = loadConfig(configPath);
-    } catch {
-      // ignore invalid existing config
-    }
-  }
+function slugify(str) {
+  return str
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '') || 'journey';
+}
 
-  const pagesList = Array.from(state.pages.values()).map(p => {
+/**
+ * Build page list from recorded state.
+ */
+function buildPagesList(state) {
+  return Array.from(state.pages.values()).map(p => {
     const entry = { id: p.id, path: p.path };
     if (p.label) entry.label = p.label;
 
@@ -245,7 +243,12 @@ function buildConfig(state, configPath) {
 
     return entry;
   });
+}
 
+/**
+ * Build a journey object from recorded edges.
+ */
+function buildJourney(state) {
   // Deduplicate edges
   const seenEdges = new Set();
   const uniqueEdges = state.edges.filter(e => {
@@ -261,27 +264,70 @@ function buildConfig(state, configPath) {
     return step;
   });
 
-  const newJourney = journeySteps.length > 0 ? {
-    id: `recorded-${Date.now()}`,
-    label: state.name || 'Recorded journey',
-    steps: journeySteps
-  } : null;
+  if (journeySteps.length === 0) return null;
 
-  // Append mode: merge into existing config
-  if (state.append && existingConfig) {
-    const existingPageIds = new Set(existingConfig.pages.map(p => p.id));
+  const label = state.name || 'Recorded journey';
+  return {
+    id: slugify(label),
+    label,
+    round: state.round,
+    steps: journeySteps
+  };
+}
+
+/**
+ * Build a prototype-map config from recorded state.
+ * Automatically merges with existing config if present —
+ * matching journeys (by name) are replaced, new ones are added.
+ */
+function buildConfig(state, configPath) {
+  const pagesList = buildPagesList(state);
+  const newJourney = buildJourney(state);
+
+  // Try to load existing config for merging
+  let existingConfig = null;
+  if (existsSync(configPath)) {
+    try {
+      existingConfig = loadConfig(configPath);
+    } catch {
+      // ignore invalid existing config
+    }
+  }
+
+  if (existingConfig) {
+    // Update round
+    existingConfig.round = state.round;
+
+    // Merge pages: add new ones, update existing ones with new states
+    const existingPageMap = new Map(existingConfig.pages.map(p => [p.id, p]));
     for (const page of pagesList) {
-      if (!existingPageIds.has(page.id)) {
+      if (existingPageMap.has(page.id)) {
+        // Update the existing page's states with the new recording's states
+        const existing = existingPageMap.get(page.id);
+        if (page.states) {
+          existing.states = page.states;
+        }
+        if (page.label) {
+          existing.label = page.label;
+        }
+      } else {
         existingConfig.pages.push(page);
       }
     }
+
+    // Match journey by label — replace if found, append if new
     if (newJourney) {
       existingConfig.journeys = existingConfig.journeys || [];
-      existingConfig.journeys.push(newJourney);
+      const existingIdx = existingConfig.journeys.findIndex(
+        j => j.label === newJourney.label
+      );
+      if (existingIdx >= 0) {
+        existingConfig.journeys[existingIdx] = newJourney;
+      } else {
+        existingConfig.journeys.push(newJourney);
+      }
     }
-    if (state.description) {
-      existingConfig.description = state.description;
-    }
+
     return existingConfig;
   }
 
@@ -290,14 +336,10 @@ function buildConfig(state, configPath) {
     name: state.name || pagesList[0]?.label || 'Recorded prototype',
     baseUrl: state.baseUrl || 'http://localhost:3000',
     viewport: { width: 1280, height: 900 },
-    round: 1,
+    round: state.round,
     pages: pagesList,
     journeys: newJourney ? [newJourney] : []
   };
-
-  if (state.description) {
-    config.description = state.description;
-  }
 
   return config;
 }

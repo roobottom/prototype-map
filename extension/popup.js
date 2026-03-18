@@ -1,7 +1,6 @@
 const nameInput = document.getElementById('name');
-const descriptionInput = document.getElementById('description');
+const roundInput = document.getElementById('round');
 const portInput = document.getElementById('port');
-const appendInput = document.getElementById('append');
 const startBtn = document.getElementById('startBtn');
 const stopBtn = document.getElementById('stopBtn');
 const statusEl = document.getElementById('status');
@@ -24,8 +23,7 @@ async function init() {
   const state = stored.prototypeMapState || {};
   if (state.port) portInput.value = state.port;
   if (state.name) nameInput.value = state.name;
-  if (state.description) descriptionInput.value = state.description;
-  if (state.append) appendInput.checked = state.append;
+  if (state.round) roundInput.value = state.round;
 
   // Check recording status
   await refreshStatus();
@@ -42,8 +40,7 @@ async function refreshStatus() {
       stopBtn.style.display = 'block';
       portInput.disabled = true;
       nameInput.disabled = true;
-      descriptionInput.disabled = true;
-      appendInput.disabled = true;
+      roundInput.disabled = true;
     } else {
       statusEl.className = 'status idle';
       statusEl.textContent = 'Idle';
@@ -51,8 +48,7 @@ async function refreshStatus() {
       stopBtn.style.display = 'none';
       portInput.disabled = false;
       nameInput.disabled = false;
-      descriptionInput.disabled = false;
-      appendInput.disabled = false;
+      roundInput.disabled = false;
     }
   } catch {
     statusEl.className = 'status idle';
@@ -67,17 +63,16 @@ startBtn.addEventListener('click', async () => {
 
   const port = parseInt(portInput.value, 10) || 4444;
   const name = nameInput.value.trim();
-  const description = descriptionInput.value.trim();
-  const append = appendInput.checked;
+  const round = parseInt(roundInput.value, 10) || 1;
 
   // Save state
   await chrome.storage.local.set({
-    prototypeMapState: { port, name, description, append, isRecording: false, tabId: null }
+    prototypeMapState: { port, name, round, isRecording: false, tabId: null }
   });
 
   const response = await chrome.runtime.sendMessage({
     type: 'recording/start',
-    payload: { port, tabId: currentTabId, name, description, append }
+    payload: { port, tabId: currentTabId, name, round }
   });
 
   if (response.ok) {

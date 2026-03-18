@@ -8,7 +8,6 @@ const schema = {
   required: ['name', 'baseUrl', 'pages'],
   properties: {
     name: { type: 'string' },
-    description: { type: 'string' },
     baseUrl: { type: 'string' },
     viewport: {
       type: 'object',
@@ -72,6 +71,7 @@ const schema = {
         properties: {
           id: { type: 'string' },
           label: { type: 'string' },
+          round: { type: 'number' },
           steps: {
             type: 'array',
             items: {

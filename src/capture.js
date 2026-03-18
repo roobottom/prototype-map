@@ -124,23 +124,43 @@ export async function capture(opts) {
 
   const pageMap = new Map(config.pages.map(p => [p.id, p]));
 
-  // If there's a journey, replay it in order with a shared session
-  const journeyId = opts.journey || (config.journeys.length > 0 ? config.journeys[0].id : null);
-  const journey = journeyId ? config.journeys.find(j => j.id === journeyId) : null;
-
-  if (journey) {
-    await captureJourney(config, journey, pageMap, screenshotDir, opts);
+  if (opts.journey) {
+    // Capture a specific journey
+    const journey = config.journeys.find(j => j.id === opts.journey);
+    if (!journey) throw new Error(`Journey "${opts.journey}" not found in config`);
+    const result = await captureJourney(config, journey, pageMap, screenshotDir, 1);
+    writeManifest(screenshotDir, result.manifest, result.capturedCount);
+  } else if (config.journeys.length > 0) {
+    // Capture all journeys
+    const allManifest = [];
+    let totalCaptured = 0;
+    let stepNumber = 1;
+    for (const journey of config.journeys) {
+      const result = await captureJourney(config, journey, pageMap, screenshotDir, stepNumber);
+      allManifest.push(...result.manifest);
+      totalCaptured += result.capturedCount;
+      stepNumber = result.nextStep;
+    }
+    writeManifest(screenshotDir, allManifest, totalCaptured);
   } else {
-    // No journey — capture pages independently (original behaviour)
+    // No journeys — capture pages independently
     await captureIndependent(config, config.pages, screenshotDir, opts);
   }
+}
+
+function writeManifest(screenshotDir, manifest, capturedCount) {
+  const manifestPath = join(screenshotDir, 'manifest.json');
+  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+  console.log(`\nCaptured ${capturedCount} screenshot(s) to ${screenshotDir}`);
+  console.log(`Manifest written to ${manifestPath}`);
 }
 
 /**
  * Replay a journey in order, keeping session state between pages.
  * Screenshots each page after filling forms but before submitting.
+ * Returns { manifest, capturedCount, nextStep } for the caller to aggregate.
  */
-async function captureJourney(config, journey, pageMap, screenshotDir, opts) {
+async function captureJourney(config, journey, pageMap, screenshotDir, startStep) {
   console.log(`Replaying journey "${journey.label || journey.id}"...`);
 
   const browser = await chromium.launch();
@@ -156,7 +176,7 @@ async function captureJourney(config, journey, pageMap, screenshotDir, opts) {
   const captured = new Set();
   const manifest = [];
   let capturedCount = 0;
-  let stepNumber = 1;
+  let stepNumber = startStep;
 
   // Walk through journey steps in order
   for (const step of journey.steps) {
@@ -283,11 +303,7 @@ async function captureJourney(config, journey, pageMap, screenshotDir, opts) {
   await context.close();
   await browser.close();
 
-  // Write manifest
-  const manifestPath = join(screenshotDir, 'manifest.json');
-  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-  console.log(`\nCaptured ${capturedCount} screenshot(s) to ${screenshotDir}`);
-  console.log(`Manifest written to ${manifestPath}`);
+  return { manifest, capturedCount, nextStep: stepNumber };
 }
 
 /**

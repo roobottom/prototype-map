@@ -16,7 +16,7 @@ program
 program
   .command('serve')
   .description('Start the recording server for the browser extension')
-  .option('-c, --config <path>', 'Config file path', 'prototype-map.yaml')
+  .option('-c, --config <path>', 'Config file path', '.prototype-map/config.yaml')
   .option('-p, --port <n>', 'Server port', '4444')
   .action(async (opts) => {
     const { startServer } = await import('../src/server.js');
@@ -26,8 +26,8 @@ program
 program
   .command('capture')
   .description('Take screenshots of pages and states defined in config')
-  .option('-c, --config <path>', 'Config file path', 'prototype-map.yaml')
-  .option('-o, --out <dir>', 'Output directory', 'prototype-map-output')
+  .option('-c, --config <path>', 'Config file path', '.prototype-map/config.yaml')
+  .option('-o, --out <dir>', 'Output directory', '.prototype-map/output')
   .option('--round <n>', 'Override round number from config')
   .option('--page <id>', 'Capture only a specific page')
   .option('--journey <id>', 'Capture only pages in a specific journey')
@@ -39,8 +39,8 @@ program
 program
   .command('map')
   .description('Generate journey map visualization')
-  .option('-c, --config <path>', 'Config file path', 'prototype-map.yaml')
-  .option('-o, --out <dir>', 'Output directory', 'prototype-map-output')
+  .option('-c, --config <path>', 'Config file path', '.prototype-map/config.yaml')
+  .option('-o, --out <dir>', 'Output directory', '.prototype-map/output')
   .option('--format <type>', 'Output format: html, png, svg, or all', 'html')
   .option('--journey <id>', 'Map a specific journey')
   .option('--embed-screenshots', 'Embed screenshot thumbnails in map nodes')
@@ -53,8 +53,8 @@ program
 program
   .command('run')
   .description('Capture screenshots and generate map in one step')
-  .option('-c, --config <path>', 'Config file path', 'prototype-map.yaml')
-  .option('-o, --out <dir>', 'Output directory', 'prototype-map-output')
+  .option('-c, --config <path>', 'Config file path', '.prototype-map/config.yaml')
+  .option('-o, --out <dir>', 'Output directory', '.prototype-map/output')
   .option('--round <n>', 'Override round number from config')
   .option('--format <type>', 'Map format: html, png, svg, or all', 'html')
   .option('--journey <id>', 'Specific journey only')
@@ -69,8 +69,8 @@ program
 program
   .command('deploy')
   .description('Copy screenshots and manifest to a target project directory')
-  .option('-c, --config <path>', 'Config file path', 'prototype-map.yaml')
-  .option('-o, --out <dir>', 'Source output directory', 'prototype-map-output')
+  .option('-c, --config <path>', 'Config file path', '.prototype-map/config.yaml')
+  .option('-o, --out <dir>', 'Source output directory', '.prototype-map/output')
   .option('--round <n>', 'Override round number from config')
   .option('--target <path>', 'Destination directory (or set deploy.target in config)')
   .action(async (opts) => {
