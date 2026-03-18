@@ -58,6 +58,12 @@ const schema = {
         }
       }
     },
+    deploy: {
+      type: 'object',
+      properties: {
+        target: { type: 'string' }
+      }
+    },
     journeys: {
       type: 'array',
       items: {

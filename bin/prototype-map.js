@@ -66,4 +66,16 @@ program
     await map({ ...opts, embedScreenshots: opts.embedScreenshots });
   });
 
+program
+  .command('deploy')
+  .description('Copy screenshots and manifest to a target project directory')
+  .option('-c, --config <path>', 'Config file path', 'prototype-map.yaml')
+  .option('-o, --out <dir>', 'Source output directory', 'prototype-map-output')
+  .option('--round <n>', 'Override round number from config')
+  .option('--target <path>', 'Destination directory (or set deploy.target in config)')
+  .action(async (opts) => {
+    const { deploy } = await import('../src/deploy.js');
+    await deploy(opts);
+  });
+
 program.parse();

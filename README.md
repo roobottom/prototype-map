@@ -109,7 +109,7 @@ Pages and journeys are separate concerns. Pages define what exists. Journeys def
 npm run capture
 ```
 
-Screenshots land in `prototype-map-output/screenshots/round-1/`. Each page gets a PNG with a step number prefix for easy sorting: `01-start.png`, `02-name--blank.png`, `03-name--error.png`.
+Screenshots land in `prototype-map-output/screenshots/round-1/`. Each page gets a PNG with a step number prefix for easy sorting: `01-start.png`, `02-name--blank.png`, `03-name--error.png`. A `manifest.json` is also generated with metadata for each screenshot (title, URL, timestamp).
 
 ### 5. Generate a journey map
 
@@ -133,6 +133,7 @@ npm run run -- --format all --embed-screenshots
 | `capture` | Take screenshots from config |
 | `map` | Generate journey map |
 | `run` | Capture + map in one step |
+| `deploy` | Copy screenshots + manifest to another project |
 
 ### Common options
 
@@ -233,12 +234,51 @@ npx prototype-map capture --round 3
 
 This makes it easy to compare screenshots across design rounds for blog posts or stakeholder reviews.
 
+## Deploying to another project
+
+If your prototype project has its own docs folder for design history, you can deploy screenshots directly into it:
+
+```bash
+npm run deploy -- --target ../my-prototype/docs/design-history/screens
+```
+
+This copies the current round's screenshots and `manifest.json` to `<target>/round-N/`.
+
+To avoid typing the path every time, set it in your config:
+
+```yaml
+deploy:
+  target: ../my-prototype/docs/design-history/screens
+```
+
+Then just run:
+
+```bash
+npm run deploy
+```
+
+The manifest contains structured metadata for each screenshot:
+
+```json
+[
+  {
+    "step": "01-start",
+    "file": "01-start.png",
+    "title": "Start page",
+    "url": "http://localhost:3000/start",
+    "capturedAt": "2026-03-18T10:30:00.000Z",
+    "note": ""
+  }
+]
+```
+
 ## Output
 
 ```
 prototype-map-output/
 ├── screenshots/
 │   ├── round-1/
+│   │   ├── manifest.json
 │   │   ├── 01-start.png
 │   │   ├── 02-name--blank.png
 │   │   ├── 03-name--error.png

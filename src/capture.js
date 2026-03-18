@@ -1,5 +1,5 @@
 import { chromium } from 'playwright';
-import { mkdirSync } from 'fs';
+import { mkdirSync, writeFileSync } from 'fs';
 import { join, resolve } from 'path';
 import { loadConfig } from './config.js';
 
@@ -135,75 +135,88 @@ async function captureJourney(config, journey, pageMap, screenshotDir, opts) {
   const browserPage = await context.newPage();
 
   const captured = new Set();
+  const manifest = [];
   let capturedCount = 0;
   let stepNumber = 1;
-
-  // Track how many times each page has been visited as a 'from',
-  // so we use the right state when a page appears multiple times
-  const visitCount = new Map();
 
   // Walk through journey steps in order
   for (const step of journey.steps) {
     const page = pageMap.get(step.from);
     if (!page) continue;
 
-    // Pick the right state: use fromState if specified, otherwise
-    // cycle through states in order for repeat visits
-    const visits = visitCount.get(page.id) || 0;
-    visitCount.set(page.id, visits + 1);
-
-    let state;
+    // Build the list of states to capture for this step.
+    // If fromState is specified, use just that one state.
+    // If the page has multiple states, capture ALL of them in sequence.
+    // Otherwise, capture the page with no state.
+    let statesToCapture;
     if (step.fromState) {
-      state = page.states?.find(s => s.id === step.fromState) || null;
+      const s = page.states?.find(s => s.id === step.fromState) || null;
+      statesToCapture = [s];
     } else if (page.states && page.states.length > 0) {
-      state = page.states[Math.min(visits, page.states.length - 1)];
+      // Check which states haven't been captured yet
+      const uncaptured = page.states.filter(s => !captured.has(`${page.id}--${s.id}`));
+      statesToCapture = uncaptured.length > 0 ? uncaptured : [page.states[page.states.length - 1]];
     } else {
-      state = null;
+      statesToCapture = [null];
     }
 
-    const captureKey = `${page.id}--${state?.id || 'default'}`;
+    for (let si = 0; si < statesToCapture.length; si++) {
+      const state = statesToCapture[si];
+      const captureKey = `${page.id}--${state?.id || 'default'}`;
 
-    // Navigate to the page (if not already there)
-    const url = buildUrl(config.baseUrl, page.path, state);
-    try {
-      const currentUrl = browserPage.url();
-      const currentPath = currentUrl.startsWith('http') ? new URL(currentUrl).pathname : '';
-      if (currentPath !== page.path) {
-        await browserPage.goto(url, { waitUntil: 'load', timeout: 15000 });
-      }
+      // Navigate to the page (if not already there, or if we need to reset for a new state)
+      const url = buildUrl(config.baseUrl, page.path, state);
+      try {
+        const currentUrl = browserPage.url();
+        const currentPath = currentUrl.startsWith('http') ? new URL(currentUrl).pathname : '';
+        if (currentPath !== page.path || si > 0) {
+          await browserPage.goto(url, { waitUntil: 'load', timeout: 15000 });
+        }
 
-      // Fill form if this state has formData
-      if (state?.formData) {
-        await fillForm(browserPage, state.formData);
-      }
+        // Fill form if this state has formData
+        if (state?.formData) {
+          await fillForm(browserPage, state.formData);
+        }
 
-      // Run setup if defined
-      if (state?.setup) {
-        const setupFn = new Function('page', 'baseUrl', `return (async () => { ${state.setup} })()`);
-        await setupFn(browserPage, config.baseUrl);
-        await browserPage.waitForLoadState('load');
-        await browserPage.waitForTimeout(500);
-      }
+        // Run setup if defined
+        if (state?.setup) {
+          const setupFn = new Function('page', 'baseUrl', `return (async () => { ${state.setup} })()`);
+          await setupFn(browserPage, config.baseUrl);
+          await browserPage.waitForLoadState('load');
+          await browserPage.waitForTimeout(500);
+        }
 
-      // Screenshot (only if we haven't captured this exact state yet)
-      if (!captured.has(captureKey)) {
+        // Screenshot (only if we haven't captured this exact state yet)
+        if (!captured.has(captureKey)) {
+          const filename = screenshotName(stepNumber, page.id, state?.id);
+          const filepath = join(screenshotDir, filename);
+          await browserPage.screenshot({ path: filepath, fullPage: true });
+          const title = state?.label || page.label || page.id;
+          console.log(`  ${filename} - ${title}`);
+          manifest.push({
+            step: filename.replace(/\.png$/, ''),
+            file: filename,
+            title,
+            url,
+            capturedAt: new Date().toISOString(),
+            note: ''
+          });
+          capturedCount++;
+          captured.add(captureKey);
+          stepNumber++;
+        }
+
+        // Submit to advance the session.
+        // For intermediate states (not the last), submit to reset and re-navigate.
+        // For the last state, submit to advance to the next page in the journey.
+        if (state?.submit) {
+          await submitForm(browserPage, state.submit);
+        }
+      } catch (err) {
         const filename = screenshotName(stepNumber, page.id, state?.id);
-        const filepath = join(screenshotDir, filename);
-        await browserPage.screenshot({ path: filepath, fullPage: true });
-        console.log(`  ${filename} - ${state?.label || page.label || page.id}`);
-        capturedCount++;
-        captured.add(captureKey);
+        console.error(`  ERROR: ${filename} - ${err.message}`);
+        stepNumber++;
       }
-      stepNumber++;
-
-      // Submit to advance the session for the next page
-      if (state?.submit) {
-        await submitForm(browserPage, state.submit);
-      }
-    } catch (err) {
-      const filename = screenshotName(stepNumber, page.id, state?.id);
-      console.error(`  ERROR: ${filename} - ${err.message}`);
-      stepNumber++;
     }
   }
 
@@ -219,7 +232,17 @@ async function captureJourney(config, journey, pageMap, screenshotDir, opts) {
           const filename = screenshotName(stepNumber, lastPage.id, lastState?.id);
           const filepath = join(screenshotDir, filename);
           await browserPage.screenshot({ path: filepath, fullPage: true });
-          console.log(`  ${filename} - ${lastState?.label || lastPage.label || lastPage.id}`);
+          const lastTitle = lastState?.label || lastPage.label || lastPage.id;
+          const lastUrl = buildUrl(config.baseUrl, lastPage.path, lastState);
+          console.log(`  ${filename} - ${lastTitle}`);
+          manifest.push({
+            step: filename.replace(/\.png$/, ''),
+            file: filename,
+            title: lastTitle,
+            url: lastUrl,
+            capturedAt: new Date().toISOString(),
+            note: ''
+          });
           capturedCount++;
         } catch (err) {
           const filename = screenshotName(stepNumber, lastPage.id, lastState?.id);
@@ -231,7 +254,12 @@ async function captureJourney(config, journey, pageMap, screenshotDir, opts) {
 
   await context.close();
   await browser.close();
+
+  // Write manifest
+  const manifestPath = join(screenshotDir, 'manifest.json');
+  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
   console.log(`\nCaptured ${capturedCount} screenshot(s) to ${screenshotDir}`);
+  console.log(`Manifest written to ${manifestPath}`);
 }
 
 /**
@@ -251,6 +279,7 @@ async function captureIndependent(config, pages, screenshotDir, opts) {
   console.log(`Capturing ${pagesToCapture.length} page(s)...`);
 
   const browser = await chromium.launch();
+  const manifest = [];
   let capturedCount = 0;
   let stepNumber = 1;
 
@@ -298,6 +327,14 @@ async function captureIndependent(config, pages, screenshotDir, opts) {
 
         const label = state?.label || page.label || page.id;
         console.log(`  ${filename} - ${label}`);
+        manifest.push({
+          step: filename.replace(/\.png$/, ''),
+          file: filename,
+          title: label,
+          url,
+          capturedAt: new Date().toISOString(),
+          note: ''
+        });
         capturedCount++;
       } catch (err) {
         const label = state?.label || page.label || page.id;
@@ -310,5 +347,10 @@ async function captureIndependent(config, pages, screenshotDir, opts) {
   }
 
   await browser.close();
+
+  // Write manifest
+  const manifestPath = join(screenshotDir, 'manifest.json');
+  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
   console.log(`\nCaptured ${capturedCount} screenshot(s) to ${screenshotDir}`);
+  console.log(`Manifest written to ${manifestPath}`);
 }

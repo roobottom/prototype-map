@@ -11,6 +11,7 @@
     "capture": "node bin/prototype-map.js capture",
     "map": "node bin/prototype-map.js map",
     "run": "node bin/prototype-map.js run",
+    "deploy": "node bin/prototype-map.js deploy",
     "test": "vitest run"
   },
   "keywords": [

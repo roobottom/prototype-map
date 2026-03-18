@@ -5,12 +5,15 @@ viewport:
   height: 900
 round: 1
 pages:
-  - id: sites-site_3-availability
-    path: /sites/site_3/availability
-    label: Availability — Dean’s Pharmacy – Manage Your Appointments – NHS
-  - id: sites-site_3-add-availability
-    path: /sites/site_3/add-availability
-    label: Add availability — Dean’s Pharmacy – Manage Your Appointments – NHS
+  - id: sites-site_2-dashboard
+    path: /sites/site_2/dashboard
+    label: Riverside Pharmacy – Manage Your Appointments – NHS
+  - id: sites-site_2-availability
+    path: /sites/site_2/availability
+    label: Availability — Riverside Pharmacy – Manage Your Appointments – NHS
+  - id: sites-site_2-add-availability
+    path: /sites/site_2/add-availability
+    label: Add availability — Riverside Pharmacy – Manage Your Appointments – NHS
     states:
       - id: submitted
         label: Form submitted
@@ -18,31 +21,31 @@ pages:
           - field: "#type-2"
             action: check
         submit: true
-  - id: sites-site_3-add-availability-recurring-details
-    path: /sites/site_3/add-availability/recurring/details
-    label: Session details — Dean’s Pharmacy – Manage Your Appointments – NHS
+  - id: sites-site_2-add-availability-recurring-details
+    path: /sites/site_2/add-availability/recurring/details
+    label: Session details — Riverside Pharmacy – Manage Your Appointments – NHS
     states:
       - id: submitted
         label: Form submitted
         formData:
           - field: "#label"
-            value: brian!
+            value: Weekly covid sessions
           - field: "#startDate-day"
             value: "1"
           - field: "#startDate-month"
-            value: "1"
+            value: "12"
           - field: "#startDate-year"
-            value: "2027"
+            value: "2026"
           - field: "#endDate-day"
             value: "1"
           - field: "#endDate-month"
-            value: "1"
+            value: "12"
           - field: "#endDate-year"
-            value: "2028"
+            value: "2027"
         submit: true
-  - id: sites-site_3-add-availability-recurring-vaccinators
-    path: /sites/site_3/add-availability/recurring/vaccinators
-    label: Vaccinators — Dean’s Pharmacy – Manage Your Appointments – NHS
+  - id: sites-site_2-add-availability-recurring-vaccinators
+    path: /sites/site_2/add-availability/recurring/vaccinators
+    label: Vaccinators — Riverside Pharmacy – Manage Your Appointments – NHS
     states:
       - id: submitted
         label: Form submitted
@@ -52,9 +55,9 @@ pages:
           - field: "#hasMultipleVaccinators-2"
             action: check
         submit: true
-  - id: sites-site_3-add-availability-recurring-day-pattern
-    path: /sites/site_3/add-availability/recurring/day-pattern
-    label: Day pattern — Dean’s Pharmacy – Manage Your Appointments – NHS
+  - id: sites-site_2-add-availability-recurring-day-pattern
+    path: /sites/site_2/add-availability/recurring/day-pattern
+    label: Day pattern — Riverside Pharmacy – Manage Your Appointments – NHS
     states:
       - id: submitted
         label: Form submitted
@@ -74,26 +77,34 @@ pages:
           - field: "#dayPattern-7"
             action: uncheck
         submit: true
-  - id: sites-site_3-add-availability-recurring-times
-    path: /sites/site_3/add-availability/recurring/times
-    label: Session times – Manage Your Appointments – NHS
+  - id: sites-site_2-add-availability-recurring-times
+    path: /sites/site_2/add-availability/recurring/times
+    label: "Error: Session times – Manage Your Appointments – NHS"
     states:
       - id: submitted
         label: Form submitted
+        formData:
+          - field: "#start-time-1"
+            value: ""
+          - field: "#end-time-1"
+            value: ""
+        submit: true
+      - id: submitted-2
+        label: Form submitted (2)
         formData:
           - field: button:has-text("Add another")
             action: click
           - field: "#start-time-1"
             value: 9am
           - field: "#end-time-1"
-            value: 12pm
+            value: 3:30pm
           - field: "#start-time-2"
-            value: 1pm
-          - field: "#end-time-2"
             value: 6pm
+          - field: "#end-time-2"
+            value: 7pm
         submit: true
-  - id: sites-site_3-add-availability-recurring-booking-length
-    path: /sites/site_3/add-availability/recurring/booking-length
+  - id: sites-site_2-add-availability-recurring-booking-length
+    path: /sites/site_2/add-availability/recurring/booking-length
     label: How long do you need for each appointment? – Manage Your Appointments – NHS
     states:
       - id: submitted
@@ -102,25 +113,82 @@ pages:
           - field: "#slotLength"
             value: "10"
         submit: true
-  - id: sites-site_3-add-availability-recurring-services
-    path: /sites/site_3/add-availability/recurring/services
-    label: Services — Dean’s Pharmacy – Manage Your Appointments – NHS
+  - id: sites-site_2-add-availability-recurring-services
+    path: /sites/site_2/add-availability/recurring/services
+    label: Services — Riverside Pharmacy – Manage Your Appointments – NHS
+    states:
+      - id: submitted
+        label: Form submitted
+        formData:
+          - field: "#services-1"
+            action: uncheck
+          - field: "#services-1-2"
+            action: uncheck
+          - field: "#services-1-3"
+            action: check
+          - field: "#services-2"
+            action: uncheck
+          - field: "#services-2-2"
+            action: check
+          - field: "#services-2-3"
+            action: check
+          - field: "#services-3"
+            action: uncheck
+          - field: "#services-3-2"
+            action: uncheck
+          - field: "#services-4"
+            action: uncheck
+          - field: "#services-5"
+            action: uncheck
+          - field: "#services-5-2"
+            action: uncheck
+        submit: true
+  - id: sites-site_2-add-availability-recurring-exceptions
+    path: /sites/site_2/add-availability/recurring/exceptions
+    label: Exceptions – Manage Your Appointments – NHS
+    states:
+      - id: submitted
+        label: Form submitted
+        formData:
+          - field: "#addAnother-2"
+            action: check
+        submit: true
+  - id: sites-site_2-add-availability-recurring-check
+    path: /sites/site_2/add-availability/recurring/check
+    label: Check your answers — Riverside Pharmacy – Manage Your Appointments – NHS
+    states:
+      - id: submitted
+        label: Form submitted
+        submit: true
+  - id: sites-site_2-add-availability-recurring-success
+    path: /sites/site_2/add-availability/recurring/success
+    label: Session added — Riverside Pharmacy – Manage Your Appointments – NHS
 journeys:
-  - id: recorded
-    label: Recorded journey
+  - id: recorded-1773828402801
+    label: Round 1
     steps:
-      - from: sites-site_3-availability
-        to: sites-site_3-add-availability
-      - from: sites-site_3-add-availability
-        to: sites-site_3-add-availability-recurring-details
-      - from: sites-site_3-add-availability-recurring-details
-        to: sites-site_3-add-availability-recurring-vaccinators
-      - from: sites-site_3-add-availability-recurring-vaccinators
-        to: sites-site_3-add-availability-recurring-day-pattern
-      - from: sites-site_3-add-availability-recurring-day-pattern
-        to: sites-site_3-add-availability-recurring-times
-      - from: sites-site_3-add-availability-recurring-times
-        to: sites-site_3-add-availability-recurring-booking-length
-      - from: sites-site_3-add-availability-recurring-booking-length
-        to: sites-site_3-add-availability-recurring-services
+      - from: sites-site_2-dashboard
+        to: sites-site_2-availability
+      - from: sites-site_2-availability
+        to: sites-site_2-add-availability
+      - from: sites-site_2-add-availability
+        to: sites-site_2-add-availability-recurring-details
+      - from: sites-site_2-add-availability-recurring-details
+        to: sites-site_2-add-availability-recurring-vaccinators
+      - from: sites-site_2-add-availability-recurring-vaccinators
+        to: sites-site_2-add-availability-recurring-day-pattern
+      - from: sites-site_2-add-availability-recurring-day-pattern
+        to: sites-site_2-add-availability-recurring-times
+      - from: sites-site_2-add-availability-recurring-times
+        to: sites-site_2-add-availability-recurring-booking-length
+      - from: sites-site_2-add-availability-recurring-booking-length
+        to: sites-site_2-add-availability-recurring-services
+      - from: sites-site_2-add-availability-recurring-services
+        to: sites-site_2-add-availability-recurring-exceptions
+      - from: sites-site_2-add-availability-recurring-exceptions
+        to: sites-site_2-add-availability-recurring-check
+      - from: sites-site_2-add-availability-recurring-check
+        to: sites-site_2-add-availability-recurring-success
+      - from: sites-site_2-add-availability-recurring-success
+        to: sites-site_2-availability
 description: Adding availability
