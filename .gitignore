@@ -1,6 +1,6 @@
 node_modules/
 .prototype-map/output/
-projects.json
+/projects.json
 *.tgz
 .DS_Store
 .claude/
