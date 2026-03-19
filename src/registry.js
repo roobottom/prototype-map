@@ -1,45 +1,93 @@
-import { readFileSync, writeFileSync } from 'fs';
+import { readdirSync, existsSync, readFileSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import yaml from 'js-yaml';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const REGISTRY_PATH = join(__dirname, '..', 'projects.json');
+const PROJECTS_DIR = join(__dirname, '..', 'projects');
 
 /**
- * Load the project registry.
- * Returns [] if the file doesn't exist yet.
+ * Get the absolute path to the projects directory.
+ */
+export function getProjectsDir() {
+  return PROJECTS_DIR;
+}
+
+/**
+ * Get the absolute path to a project's directory by slug.
+ */
+export function getProjectDir(slug) {
+  return join(PROJECTS_DIR, slug);
+}
+
+/**
+ * Get the config file path for a project.
+ */
+export function getConfigPath(slug) {
+  return join(PROJECTS_DIR, slug, 'config.yaml');
+}
+
+/**
+ * Get the output directory for a project.
+ */
+export function getOutputDir(slug) {
+  return join(PROJECTS_DIR, slug, 'output');
+}
+
+/**
+ * Scan the projects/ directory and return all registered projects.
+ * Each project is a subfolder containing a config.yaml.
  */
 export function loadRegistry() {
-  try {
-    return JSON.parse(readFileSync(REGISTRY_PATH, 'utf8'));
-  } catch {
-    return [];
+  if (!existsSync(PROJECTS_DIR)) return [];
+
+  const entries = readdirSync(PROJECTS_DIR, { withFileTypes: true });
+  const projects = [];
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+
+    const configPath = join(PROJECTS_DIR, entry.name, 'config.yaml');
+    if (!existsSync(configPath)) continue;
+
+    try {
+      const raw = readFileSync(configPath, 'utf8');
+      const config = yaml.load(raw);
+      projects.push({
+        slug: entry.name,
+        name: config.name || entry.name,
+        baseUrl: config.baseUrl || 'http://localhost:3000',
+        round: config.round || 1
+      });
+    } catch {
+      // Skip invalid configs
+      projects.push({
+        slug: entry.name,
+        name: entry.name,
+        baseUrl: 'http://localhost:3000',
+        round: 1
+      });
+    }
   }
+
+  return projects;
 }
 
 /**
- * Register a project. Upserts by path — if a project with the same
- * path already exists, it updates the name and baseUrl.
+ * Create a new project directory with a config.yaml.
  */
-export function registerProject({ name, path, baseUrl }) {
-  const projects = loadRegistry();
-  const idx = projects.findIndex(p => p.path === path);
-  const entry = { name, path, baseUrl: baseUrl || 'http://localhost:3000' };
-
-  if (idx >= 0) {
-    projects[idx] = entry;
-  } else {
-    projects.push(entry);
-  }
-
-  writeFileSync(REGISTRY_PATH, JSON.stringify(projects, null, 2));
-  return entry;
+export function createProject({ slug, name, baseUrl }) {
+  const projectDir = join(PROJECTS_DIR, slug);
+  mkdirSync(projectDir, { recursive: true });
+  return projectDir;
 }
 
 /**
- * Remove a project from the registry by path.
+ * Slugify a string for use as a directory name.
  */
-export function removeProject(projectPath) {
-  const projects = loadRegistry().filter(p => p.path !== projectPath);
-  writeFileSync(REGISTRY_PATH, JSON.stringify(projects, null, 2));
+export function slugify(str) {
+  return str
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '') || 'project';
 }

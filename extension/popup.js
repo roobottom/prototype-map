@@ -27,13 +27,13 @@ async function init() {
   if (state.round) roundInput.value = state.round;
 
   // Fetch projects from server
-  await loadProjects(state.projectPath);
+  await loadProjects(state.projectSlug);
 
   // Check recording status
   await refreshStatus();
 }
 
-async function loadProjects(savedProjectPath) {
+async function loadProjects(savedSlug) {
   const port = parseInt(portInput.value, 10) || 4444;
   try {
     const res = await fetch(`http://localhost:${port}/api/projects`);
@@ -42,31 +42,28 @@ async function loadProjects(savedProjectPath) {
     projectSelect.innerHTML = '';
 
     if (projects.length === 0) {
-      projectSelect.innerHTML = '<option value="">No projects — run "npx prototype-map init"</option>';
+      projectSelect.innerHTML = '<option value="">No projects — run "npm run init"</option>';
       return;
     }
 
     for (const project of projects) {
       const opt = document.createElement('option');
-      opt.value = project.path;
+      opt.value = project.slug;
       opt.textContent = project.name;
-      if (project.path === savedProjectPath) {
+      if (project.slug === savedSlug) {
         opt.selected = true;
       }
       projectSelect.appendChild(opt);
     }
 
     // If no saved project matched, select the first one
-    if (!savedProjectPath || !projects.find(p => p.path === savedProjectPath)) {
+    if (!savedSlug || !projects.find(p => p.slug === savedSlug)) {
       projectSelect.selectedIndex = 0;
     }
   } catch {
     projectSelect.innerHTML = '<option value="">Server not running</option>';
   }
 }
-
-
-
 
 async function refreshStatus() {
   try {
@@ -105,16 +102,23 @@ startBtn.addEventListener('click', async () => {
   const port = parseInt(portInput.value, 10) || 4444;
   const name = nameInput.value.trim();
   const round = parseInt(roundInput.value, 10) || 1;
-  const projectPath = projectSelect.value;
+  const projectSlug = projectSelect.value;
+
+  if (!projectSlug) {
+    errorEl.textContent = 'Select a project first. Create one with "npm run init".';
+    errorEl.classList.add('visible');
+    startBtn.disabled = false;
+    return;
+  }
 
   // Save state
   await chrome.storage.local.set({
-    prototypeMapState: { port, name, round, projectPath, isRecording: false, tabId: null }
+    prototypeMapState: { port, name, round, projectSlug, isRecording: false, tabId: null }
   });
 
   const response = await chrome.runtime.sendMessage({
     type: 'recording/start',
-    payload: { port, tabId: currentTabId, name, round, projectPath }
+    payload: { port, tabId: currentTabId, name, round, projectSlug }
   });
 
   if (response.ok) {

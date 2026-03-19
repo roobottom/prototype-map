@@ -1,11 +1,10 @@
 import express from 'express';
 import cors from 'cors';
 import { resolve, join, dirname } from 'path';
-import { existsSync, readFileSync, readdirSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
-import { homedir } from 'os';
 import { loadConfig, writeConfig } from './config.js';
-import { loadRegistry, registerProject, removeProject } from './registry.js';
+import { loadRegistry, getConfigPath, getOutputDir, getProjectDir, createProject, slugify } from './registry.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -14,7 +13,6 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
  * and serves the dashboard UI.
  */
 export async function startServer(opts) {
-  const configPath = resolve(opts.config);
   const port = opts.port || 4444;
 
   // In-memory recording state
@@ -23,7 +21,7 @@ export async function startServer(opts) {
     round: 1,
     baseUrl: null,
     name: '',
-    projectPath: '',
+    projectSlug: '',      // which project to write config to
     pages: new Map(),
     edges: [],
     lastPageId: null,
@@ -46,7 +44,7 @@ export async function startServer(opts) {
   app.use('/dashboard', express.static(join(__dirname, '..', 'dashboard')));
   app.get('/', (req, res) => res.redirect('/dashboard/'));
 
-  // --- Project registry endpoints ---
+  // --- Project endpoints ---
 
   app.get('/api/projects', (req, res) => {
     try {
@@ -57,25 +55,28 @@ export async function startServer(opts) {
   });
 
   app.post('/api/projects', (req, res) => {
-    const { name, path, baseUrl } = req.body;
-    if (!name || !path) {
-      return res.status(400).json({ error: 'Name and path are required' });
+    const { name, baseUrl } = req.body;
+    if (!name) {
+      return res.status(400).json({ error: 'Name is required' });
     }
     try {
-      const expanded = path.replace(/^~(?=$|\/)/, homedir());
-      const entry = registerProject({ name, path: resolve(expanded), baseUrl });
-      res.json(entry);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
+      const slug = slugify(name);
+      createProject({ slug, name, baseUrl });
 
-  app.delete('/api/projects', (req, res) => {
-    const projectPath = req.query.project;
-    if (!projectPath) return res.status(400).json({ error: 'project query param required' });
-    try {
-      removeProject(projectPath);
-      res.json({ ok: true });
+      const configPath = getConfigPath(slug);
+      if (!existsSync(configPath)) {
+        const config = {
+          name,
+          baseUrl: baseUrl || 'http://localhost:3000',
+          viewport: { width: 1280, height: 900 },
+          round: 1,
+          pages: [],
+          journeys: []
+        };
+        writeConfig(configPath, config);
+      }
+
+      res.json({ slug, name, baseUrl });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
@@ -84,10 +85,10 @@ export async function startServer(opts) {
   // --- Config endpoint ---
 
   app.get('/api/config', (req, res) => {
-    const projectPath = req.query.project;
-    if (!projectPath) return res.status(400).json({ error: 'project query param required' });
+    const slug = req.query.project;
+    if (!slug) return res.status(400).json({ error: 'project query param required' });
 
-    const cfgPath = resolve(projectPath, '.prototype-map', 'config.yaml');
+    const cfgPath = getConfigPath(slug);
     if (!existsSync(cfgPath)) {
       return res.json({ error: 'No config found', pages: [], journeys: [] });
     }
@@ -102,21 +103,16 @@ export async function startServer(opts) {
   // --- Screenshot endpoints ---
 
   app.get('/api/screenshots', (req, res) => {
-    const { project, round, file } = req.query;
-    if (!project) return res.status(400).json({ error: 'project query param required' });
+    const { project: slug, round, file } = req.query;
+    if (!slug) return res.status(400).json({ error: 'project query param required' });
 
-    const projects = loadRegistry();
-    if (!projects.find(p => p.path === project)) {
-      return res.status(403).json({ error: 'Unknown project' });
-    }
-
-    const screenshotDir = resolve(project, '.prototype-map', 'output', 'screenshots', `round-${round || 1}`);
+    const screenshotDir = join(getOutputDir(slug), 'screenshots', `round-${round || 1}`);
 
     // If a file is requested, serve it directly
     if (file) {
       const filePath = resolve(screenshotDir, file);
       // Security: ensure path is within the project
-      if (!filePath.startsWith(resolve(project))) {
+      if (!filePath.startsWith(getProjectDir(slug))) {
         return res.status(403).json({ error: 'Invalid path' });
       }
       if (!existsSync(filePath)) {
@@ -141,11 +137,11 @@ export async function startServer(opts) {
   // --- Capture SSE endpoint ---
 
   app.get('/api/capture/events', async (req, res) => {
-    const { project, round, journey } = req.query;
-    if (!project) return res.status(400).json({ error: 'project query param required' });
+    const { project: slug, round, journey } = req.query;
+    if (!slug) return res.status(400).json({ error: 'project query param required' });
     if (captureInProgress) return res.status(409).json({ error: 'Capture already in progress' });
 
-    const cfgPath = resolve(project, '.prototype-map', 'config.yaml');
+    const cfgPath = getConfigPath(slug);
     if (!existsSync(cfgPath)) {
       return res.status(404).json({ error: 'No config found for this project' });
     }
@@ -162,7 +158,7 @@ export async function startServer(opts) {
       const { capture } = await import('./capture.js');
       await capture({
         config: cfgPath,
-        out: resolve(project, '.prototype-map', 'output'),
+        out: getOutputDir(slug),
         round: round || undefined,
         journey: journey || undefined
       }, (event) => {
@@ -181,15 +177,15 @@ export async function startServer(opts) {
   // --- Deploy endpoint ---
 
   app.post('/api/deploy', async (req, res) => {
-    const { project, round } = req.body;
-    if (!project) return res.status(400).json({ error: 'project is required' });
+    const { project: slug, round } = req.body;
+    if (!slug) return res.status(400).json({ error: 'project slug is required' });
 
-    const cfgPath = resolve(project, '.prototype-map', 'config.yaml');
+    const cfgPath = getConfigPath(slug);
     try {
       const { deploy } = await import('./deploy.js');
       await deploy({
         config: cfgPath,
-        out: resolve(project, '.prototype-map', 'output'),
+        out: getOutputDir(slug),
         round: round || undefined
       });
       res.json({ ok: true });
@@ -213,12 +209,12 @@ export async function startServer(opts) {
     state.round = req.body.round || 1;
     state.baseUrl = req.body.baseUrl || null;
     state.name = req.body.name || '';
-    state.projectPath = req.body.projectPath || '';
+    state.projectSlug = req.body.projectSlug || '';
     state.pages.clear();
     state.edges = [];
     state.lastPageId = null;
     state.lastClickText = null;
-    console.log(`Recording started (round ${state.round})${state.baseUrl ? ` for ${state.baseUrl}` : ''}${state.projectPath ? ` → ${state.projectPath}` : ''}`);
+    console.log(`Recording started (round ${state.round})${state.baseUrl ? ` for ${state.baseUrl}` : ''}${state.projectSlug ? ` → projects/${state.projectSlug}` : ''}`);
     res.json({ ok: true });
   });
 
@@ -226,9 +222,15 @@ export async function startServer(opts) {
     state.isRecording = false;
     console.log('Recording stopped');
 
-    const targetConfig = state.projectPath
-      ? resolve(state.projectPath, '.prototype-map', 'config.yaml')
-      : configPath;
+    // Write to the selected project's config
+    if (!state.projectSlug) {
+      return res.status(400).json({ error: 'No project selected' });
+    }
+
+    const targetConfig = getConfigPath(state.projectSlug);
+
+    // Ensure the project directory exists
+    createProject({ slug: state.projectSlug, name: state.name, baseUrl: state.baseUrl });
 
     const config = buildConfig(state, targetConfig);
     const writtenPath = writeConfig(targetConfig, config);
@@ -332,7 +334,7 @@ export async function startServer(opts) {
 
 // --- Config building helpers ---
 
-function slugify(str) {
+function slugifyStr(str) {
   return str
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
@@ -418,7 +420,7 @@ function buildJourney(state) {
 
   const label = state.name || 'Recorded journey';
   return {
-    id: slugify(label),
+    id: slugifyStr(label),
     label,
     round: state.round,
     steps: journeySteps

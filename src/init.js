@@ -1,12 +1,10 @@
 import { createInterface } from 'readline/promises';
-import { resolve } from 'path';
-import { homedir } from 'os';
-import { registerProject } from './registry.js';
+import { existsSync } from 'fs';
+import { createProject, slugify, getConfigPath } from './registry.js';
+import { writeConfig } from './config.js';
 
 /**
- * Register a prototype project so it appears in the extension dropdown.
- * The .prototype-map/ directory in the target project is created automatically
- * when you first record and stop.
+ * Create a new project under projects/[slug]/.
  */
 export async function init(opts) {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -17,27 +15,38 @@ export async function init(opts) {
       throw new Error('Project name is required');
     }
 
-    const pathInput = opts.path || await rl.question('Project path: ');
-    if (!pathInput.trim()) {
-      throw new Error('Project path is required');
-    }
-    const expanded = pathInput.trim().replace(/^~(?=$|\/)/, homedir());
-    const projectPath = resolve(expanded);
-
     const baseUrl = opts.url || await rl.question('Base URL (http://localhost:3000): ') || 'http://localhost:3000';
 
-    registerProject({
-      name: name.trim(),
-      path: projectPath,
-      baseUrl
-    });
+    const slug = slugify(name.trim());
+    const configPath = getConfigPath(slug);
 
-    console.log(`\nRegistered "${name.trim()}"`);
-    console.log(`  Path: ${projectPath}`);
-    console.log(`  Base URL: ${baseUrl}`);
+    if (existsSync(configPath)) {
+      const overwrite = await rl.question(`Project "${slug}" already exists. Overwrite config? (y/N): `);
+      if (overwrite.toLowerCase() !== 'y') {
+        console.log('Aborted.');
+        return;
+      }
+    }
+
+    createProject({ slug, name: name.trim(), baseUrl });
+
+    const config = {
+      name: name.trim(),
+      baseUrl,
+      viewport: { width: 1280, height: 900 },
+      round: 1,
+      pages: [],
+      journeys: []
+    };
+
+    writeConfig(configPath, config);
+
+    console.log(`\nProject "${name.trim()}" created.`);
+    console.log(`  Directory: projects/${slug}/`);
+    console.log(`  Config:    projects/${slug}/config.yaml`);
     console.log(`\nNext steps:`);
-    console.log(`  1. npx prototype-map serve`);
-    console.log(`  2. Select "${name.trim()}" in the extension and start recording`);
+    console.log(`  1. npm start`);
+    console.log(`  2. Select "${name.trim()}" in the extension or dashboard and start recording`);
   } finally {
     rl.close();
   }

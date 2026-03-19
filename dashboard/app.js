@@ -16,20 +16,20 @@ async function getProjects() {
   return api('/api/projects');
 }
 
-async function addProject({ name, path, baseUrl }) {
-  return api('/api/projects', { method: 'POST', body: { name, path, baseUrl } });
+async function addProject({ name, baseUrl }) {
+  return api('/api/projects', { method: 'POST', body: { name, baseUrl } });
 }
 
-async function getConfig(projectPath) {
-  return api(`/api/config?project=${encodeURIComponent(projectPath)}`);
+async function getConfig(slug) {
+  return api(`/api/config?project=${encodeURIComponent(slug)}`);
 }
 
-async function getManifest(projectPath, round) {
-  return api(`/api/screenshots?project=${encodeURIComponent(projectPath)}&round=${round}`);
+async function getManifest(slug, round) {
+  return api(`/api/screenshots?project=${encodeURIComponent(slug)}&round=${round}`);
 }
 
-function screenshotUrl(projectPath, round, file) {
-  return `${API}/api/screenshots?project=${encodeURIComponent(projectPath)}&round=${round}&file=${encodeURIComponent(file)}`;
+function screenshotUrl(slug, round, file) {
+  return `${API}/api/screenshots?project=${encodeURIComponent(slug)}&round=${round}&file=${encodeURIComponent(file)}`;
 }
 
 // --- Render functions ---
@@ -45,7 +45,7 @@ async function renderProjectList() {
       <span class="project-item-name">${esc(project.name)}</span>
       <span class="project-url">${esc(project.baseUrl)}</span>
     `;
-    if (currentProject?.path === project.path) {
+    if (currentProject?.slug === project.slug) {
       li.classList.add('active');
     }
     li.addEventListener('click', () => selectProject(project));
@@ -70,12 +70,12 @@ async function renderProjectDetail() {
   const nameEl = main.querySelector('.project-name');
   const metaEl = main.querySelector('.project-meta');
   nameEl.textContent = currentProject.name;
-  metaEl.textContent = `${currentProject.baseUrl} \u2022 ${currentProject.path}`;
+  metaEl.textContent = `${currentProject.baseUrl} \u2022 projects/${currentProject.slug}/`;
 
   // Load config
   let config = null;
   try {
-    const res = await getConfig(currentProject.path);
+    const res = await getConfig(currentProject.slug);
     if (!res.error) config = res;
   } catch { /* no config yet */ }
 
@@ -130,7 +130,7 @@ async function renderScreenshots(round) {
 
   let manifest;
   try {
-    manifest = await getManifest(currentProject.path, round);
+    manifest = await getManifest(currentProject.slug, round);
     if (manifest.error || !Array.isArray(manifest)) {
       grid.innerHTML = '<p class="muted">No screenshots for this round. Run a capture first.</p>';
       return;
@@ -149,7 +149,7 @@ async function renderScreenshots(round) {
   for (const entry of manifest) {
     const card = document.createElement('div');
     card.className = 'screenshot-card';
-    const imgSrc = screenshotUrl(currentProject.path, round, entry.file);
+    const imgSrc = screenshotUrl(currentProject.slug, round, entry.file);
     card.innerHTML = `
       <img src="${imgSrc}" alt="${esc(entry.title)}" loading="lazy">
       <div class="screenshot-card-info">
@@ -175,7 +175,7 @@ function runCapture(round, journeyId) {
   progressText.textContent = 'Starting capture...';
   captureBtn.disabled = true;
 
-  let params = `project=${encodeURIComponent(currentProject.path)}&round=${round}`;
+  let params = `project=${encodeURIComponent(currentProject.slug)}&round=${round}`;
   if (journeyId) params += `&journey=${encodeURIComponent(journeyId)}`;
 
   const source = new EventSource(`${API}/api/capture/events?${params}`);
@@ -218,12 +218,12 @@ async function runDeploy(round) {
   try {
     const res = await api('/api/deploy', {
       method: 'POST',
-      body: { project: currentProject.path, round }
+      body: { project: currentProject.slug, round }
     });
     if (res.error) {
       alert(res.error);
     } else {
-      alert(`Deployed round ${round} to ${res.destDir}\n${res.files} file(s) copied.`);
+      alert('Deploy complete.');
     }
   } catch (err) {
     alert(`Deploy failed: ${err.message}`);
@@ -262,14 +262,12 @@ document.getElementById('cancelProjectBtn').addEventListener('click', () => {
 
 document.getElementById('saveProjectBtn').addEventListener('click', async () => {
   const name = document.getElementById('newName').value.trim();
-  const path = document.getElementById('newPath').value.trim();
   const baseUrl = document.getElementById('newBaseUrl').value.trim();
-  if (!name || !path) return;
+  if (!name) return;
 
-  await addProject({ name, path, baseUrl });
+  await addProject({ name, baseUrl });
   document.getElementById('addProjectForm').style.display = 'none';
   document.getElementById('newName').value = '';
-  document.getElementById('newPath').value = '';
   document.getElementById('newBaseUrl').value = 'http://localhost:3000';
   await renderProjectList();
 });
