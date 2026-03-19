@@ -1,5 +1,5 @@
 node_modules/
-projects/*/output/
+projects/
 *.tgz
 .DS_Store
 .claude/
