@@ -1,5 +1,6 @@
 import { createInterface } from 'readline/promises';
 import { resolve } from 'path';
+import { homedir } from 'os';
 import { registerProject } from './registry.js';
 
 /**
@@ -20,7 +21,8 @@ export async function init(opts) {
     if (!pathInput.trim()) {
       throw new Error('Project path is required');
     }
-    const projectPath = resolve(pathInput.trim());
+    const expanded = pathInput.trim().replace(/^~(?=$|\/)/, homedir());
+    const projectPath = resolve(expanded);
 
     const baseUrl = opts.url || await rl.question('Base URL (http://localhost:3000): ') || 'http://localhost:3000';
 

@@ -1,12 +1,12 @@
-import { readFileSync, writeFileSync, mkdirSync } from 'fs';
-import { join } from 'path';
-import { homedir } from 'os';
+import { readFileSync, writeFileSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 
-const REGISTRY_DIR = join(homedir(), '.prototype-map');
-const REGISTRY_PATH = join(REGISTRY_DIR, 'projects.json');
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const REGISTRY_PATH = join(__dirname, '..', 'projects.json');
 
 /**
- * Load the global project registry.
+ * Load the project registry.
  * Returns [] if the file doesn't exist yet.
  */
 export function loadRegistry() {
@@ -32,7 +32,6 @@ export function registerProject({ name, path, baseUrl }) {
     projects.push(entry);
   }
 
-  mkdirSync(REGISTRY_DIR, { recursive: true });
   writeFileSync(REGISTRY_PATH, JSON.stringify(projects, null, 2));
   return entry;
 }
@@ -42,6 +41,5 @@ export function registerProject({ name, path, baseUrl }) {
  */
 export function removeProject(projectPath) {
   const projects = loadRegistry().filter(p => p.path !== projectPath);
-  mkdirSync(REGISTRY_DIR, { recursive: true });
   writeFileSync(REGISTRY_PATH, JSON.stringify(projects, null, 2));
 }
