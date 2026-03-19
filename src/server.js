@@ -1,12 +1,17 @@
 import express from 'express';
 import cors from 'cors';
-import { resolve } from 'path';
-import { existsSync } from 'fs';
+import { resolve, join, dirname } from 'path';
+import { existsSync, readFileSync, readdirSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { homedir } from 'os';
 import { loadConfig, writeConfig } from './config.js';
-import { loadRegistry } from './registry.js';
+import { loadRegistry, registerProject, removeProject } from './registry.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /**
- * Start the recording server that receives events from the browser extension.
+ * Start the recording server that receives events from the browser extension
+ * and serves the dashboard UI.
  */
 export async function startServer(opts) {
   const configPath = resolve(opts.config);
@@ -18,12 +23,15 @@ export async function startServer(opts) {
     round: 1,
     baseUrl: null,
     name: '',
-    projectPath: '',      // project directory selected from extension
-    pages: new Map(),     // path → { id, path, label, formSubmissions[], params: Set }
-    edges: [],            // { from, to, label }
+    projectPath: '',
+    pages: new Map(),
+    edges: [],
     lastPageId: null,
     lastClickText: null,
   };
+
+  // Track in-progress capture
+  let captureInProgress = false;
 
   function pathToId(urlPath) {
     const cleaned = urlPath.replace(/^\/|\/$/g, '').replace(/\//g, '-');
@@ -34,17 +42,164 @@ export async function startServer(opts) {
   app.use(cors());
   app.use(express.json({ limit: '1mb' }));
 
-  // GET /api/projects — list registered projects
+  // Serve dashboard static files
+  app.use('/dashboard', express.static(join(__dirname, '..', 'dashboard')));
+  app.get('/', (req, res) => res.redirect('/dashboard/'));
+
+  // --- Project registry endpoints ---
+
   app.get('/api/projects', (req, res) => {
     try {
-      const projects = loadRegistry();
-      res.json(projects);
+      res.json(loadRegistry());
     } catch {
       res.status(500).json({ error: 'Failed to load project registry' });
     }
   });
 
-  // GET /api/recording — status
+  app.post('/api/projects', (req, res) => {
+    const { name, path, baseUrl } = req.body;
+    if (!name || !path) {
+      return res.status(400).json({ error: 'Name and path are required' });
+    }
+    try {
+      const expanded = path.replace(/^~(?=$|\/)/, homedir());
+      const entry = registerProject({ name, path: resolve(expanded), baseUrl });
+      res.json(entry);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete('/api/projects', (req, res) => {
+    const projectPath = req.query.project;
+    if (!projectPath) return res.status(400).json({ error: 'project query param required' });
+    try {
+      removeProject(projectPath);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // --- Config endpoint ---
+
+  app.get('/api/config', (req, res) => {
+    const projectPath = req.query.project;
+    if (!projectPath) return res.status(400).json({ error: 'project query param required' });
+
+    const cfgPath = resolve(projectPath, '.prototype-map', 'config.yaml');
+    if (!existsSync(cfgPath)) {
+      return res.json({ error: 'No config found', pages: [], journeys: [] });
+    }
+    try {
+      const config = loadConfig(cfgPath);
+      res.json(config);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // --- Screenshot endpoints ---
+
+  app.get('/api/screenshots', (req, res) => {
+    const { project, round, file } = req.query;
+    if (!project) return res.status(400).json({ error: 'project query param required' });
+
+    const projects = loadRegistry();
+    if (!projects.find(p => p.path === project)) {
+      return res.status(403).json({ error: 'Unknown project' });
+    }
+
+    const screenshotDir = resolve(project, '.prototype-map', 'output', 'screenshots', `round-${round || 1}`);
+
+    // If a file is requested, serve it directly
+    if (file) {
+      const filePath = resolve(screenshotDir, file);
+      // Security: ensure path is within the project
+      if (!filePath.startsWith(resolve(project))) {
+        return res.status(403).json({ error: 'Invalid path' });
+      }
+      if (!existsSync(filePath)) {
+        return res.status(404).json({ error: 'File not found' });
+      }
+      return res.sendFile(filePath);
+    }
+
+    // Otherwise return the manifest
+    const manifestPath = join(screenshotDir, 'manifest.json');
+    if (!existsSync(manifestPath)) {
+      return res.json([]);
+    }
+    try {
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+      res.json(manifest);
+    } catch {
+      res.json([]);
+    }
+  });
+
+  // --- Capture SSE endpoint ---
+
+  app.get('/api/capture/events', async (req, res) => {
+    const { project, round, journey } = req.query;
+    if (!project) return res.status(400).json({ error: 'project query param required' });
+    if (captureInProgress) return res.status(409).json({ error: 'Capture already in progress' });
+
+    const cfgPath = resolve(project, '.prototype-map', 'config.yaml');
+    if (!existsSync(cfgPath)) {
+      return res.status(404).json({ error: 'No config found for this project' });
+    }
+
+    // Set up SSE
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    captureInProgress = true;
+
+    try {
+      const { capture } = await import('./capture.js');
+      await capture({
+        config: cfgPath,
+        out: resolve(project, '.prototype-map', 'output'),
+        round: round || undefined,
+        journey: journey || undefined
+      }, (event) => {
+        res.write(`event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`);
+      });
+
+      res.write(`event: complete\ndata: ${JSON.stringify({ totalCaptured: 'done' })}\n\n`);
+    } catch (err) {
+      res.write(`event: error\ndata: ${JSON.stringify({ message: err.message })}\n\n`);
+    }
+
+    captureInProgress = false;
+    res.end();
+  });
+
+  // --- Deploy endpoint ---
+
+  app.post('/api/deploy', async (req, res) => {
+    const { project, round } = req.body;
+    if (!project) return res.status(400).json({ error: 'project is required' });
+
+    const cfgPath = resolve(project, '.prototype-map', 'config.yaml');
+    try {
+      const { deploy } = await import('./deploy.js');
+      await deploy({
+        config: cfgPath,
+        out: resolve(project, '.prototype-map', 'output'),
+        round: round || undefined
+      });
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // --- Recording endpoints (used by browser extension) ---
+
   app.get('/api/recording', (req, res) => {
     res.json({
       isRecording: state.isRecording,
@@ -53,7 +208,6 @@ export async function startServer(opts) {
     });
   });
 
-  // POST /api/recording/start — begin recording
   app.post('/api/recording/start', (req, res) => {
     state.isRecording = true;
     state.round = req.body.round || 1;
@@ -68,12 +222,10 @@ export async function startServer(opts) {
     res.json({ ok: true });
   });
 
-  // POST /api/recording/stop — stop recording and write config
   app.post('/api/recording/stop', (req, res) => {
     state.isRecording = false;
     console.log('Recording stopped');
 
-    // Write to the selected project's config, or fall back to the server's default
     const targetConfig = state.projectPath
       ? resolve(state.projectPath, '.prototype-map', 'config.yaml')
       : configPath;
@@ -87,7 +239,6 @@ export async function startServer(opts) {
     res.json({ ok: true, configPath: writtenPath, pages: state.pages.size, edges: state.edges.length });
   });
 
-  // POST /api/recording/navigation — page navigation event
   app.post('/api/recording/navigation', (req, res) => {
     if (!state.isRecording) return res.json({ ok: false, reason: 'not recording' });
 
@@ -99,7 +250,6 @@ export async function startServer(opts) {
       return res.status(400).json({ error: 'Invalid URL' });
     }
 
-    // Set baseUrl from first navigation
     if (!state.baseUrl) {
       state.baseUrl = parsed.origin;
     }
@@ -107,7 +257,6 @@ export async function startServer(opts) {
     const path = parsed.pathname;
     const pageId = pathToId(path);
 
-    // Register page if new
     if (!state.pages.has(path)) {
       state.pages.set(path, {
         id: pageId,
@@ -117,16 +266,13 @@ export async function startServer(opts) {
         params: new Set()
       });
     } else if (title) {
-      // Update label if we get a better title
       state.pages.get(path).label = title;
     }
 
-    // Track query parameters as potential states
     for (const key of parsed.searchParams.keys()) {
       state.pages.get(path).params.add(key);
     }
 
-    // Record edge from previous page
     if (state.lastPageId && state.lastPageId !== pageId) {
       const edgeLabel = clickText || state.lastClickText || '';
       state.edges.push({
@@ -143,7 +289,6 @@ export async function startServer(opts) {
     res.json({ ok: true });
   });
 
-  // POST /api/recording/form — form submission with field values
   app.post('/api/recording/form', (req, res) => {
     if (!state.isRecording) return res.json({ ok: false, reason: 'not recording' });
 
@@ -157,7 +302,6 @@ export async function startServer(opts) {
 
     const path = parsed.pathname;
 
-    // Ensure page exists
     if (!state.pages.has(path)) {
       state.pages.set(path, {
         id: pathToId(path),
@@ -168,7 +312,6 @@ export async function startServer(opts) {
       });
     }
 
-    // Store this form submission
     state.pages.get(path).formSubmissions.push({
       fields: fields || [],
       submitSelector: submitSelector || null
@@ -180,17 +323,15 @@ export async function startServer(opts) {
   });
 
   app.listen(port, () => {
-    console.log(`\nPrototype Map recording server`);
-    console.log(`Listening on http://localhost:${port}`);
-    console.log(`Config will be written to: ${configPath}\n`);
-    console.log('Install the extension, set the port, and start recording.');
-    console.log('Press Ctrl+C to stop the server.\n');
+    console.log(`\nPrototype Map`);
+    console.log(`Dashboard:  http://localhost:${port}/dashboard/`);
+    console.log(`Server:     http://localhost:${port}`);
+    console.log(`\nPress Ctrl+C to stop.\n`);
   });
 }
 
-/**
- * Slugify a string into a URL/ID-safe form.
- */
+// --- Config building helpers ---
+
 function slugify(str) {
   return str
     .toLowerCase()
@@ -198,9 +339,6 @@ function slugify(str) {
     .replace(/^-|-$/g, '') || 'journey';
 }
 
-/**
- * Build page list from recorded state.
- */
 function buildPagesList(state) {
   return Array.from(state.pages.values()).map(p => {
     const entry = { id: p.id, path: p.path };
@@ -208,7 +346,6 @@ function buildPagesList(state) {
 
     const states = [];
 
-    // Convert form submissions into states with formData
     if (p.formSubmissions && p.formSubmissions.length > 0) {
       for (let i = 0; i < p.formSubmissions.length; i++) {
         const submission = p.formSubmissions[i];
@@ -244,7 +381,6 @@ function buildPagesList(state) {
       }
     }
 
-    // Convert detected query parameters into states
     if (p.params && p.params.size > 0) {
       for (const param of p.params) {
         states.push({
@@ -263,11 +399,7 @@ function buildPagesList(state) {
   });
 }
 
-/**
- * Build a journey object from recorded edges.
- */
 function buildJourney(state) {
-  // Deduplicate edges
   const seenEdges = new Set();
   const uniqueEdges = state.edges.filter(e => {
     const key = `${e.from}->${e.to}`;
@@ -293,16 +425,10 @@ function buildJourney(state) {
   };
 }
 
-/**
- * Build a prototype-map config from recorded state.
- * Automatically merges with existing config if present —
- * matching journeys (by name) are replaced, new ones are added.
- */
 function buildConfig(state, configPath) {
   const pagesList = buildPagesList(state);
   const newJourney = buildJourney(state);
 
-  // Try to load existing config for merging
   let existingConfig = null;
   if (existsSync(configPath)) {
     try {
@@ -313,14 +439,11 @@ function buildConfig(state, configPath) {
   }
 
   if (existingConfig) {
-    // Update round
     existingConfig.round = state.round;
 
-    // Merge pages: add new ones, update existing ones with new states
     const existingPageMap = new Map(existingConfig.pages.map(p => [p.id, p]));
     for (const page of pagesList) {
       if (existingPageMap.has(page.id)) {
-        // Update the existing page's states with the new recording's states
         const existing = existingPageMap.get(page.id);
         if (page.states) {
           existing.states = page.states;
@@ -333,7 +456,6 @@ function buildConfig(state, configPath) {
       }
     }
 
-    // Match journey by label — replace if found, append if new
     if (newJourney) {
       existingConfig.journeys = existingConfig.journeys || [];
       const existingIdx = existingConfig.journeys.findIndex(
@@ -349,7 +471,6 @@ function buildConfig(state, configPath) {
     return existingConfig;
   }
 
-  // Fresh config
   const config = {
     name: state.name || pagesList[0]?.label || 'Recorded prototype',
     baseUrl: state.baseUrl || 'http://localhost:3000',

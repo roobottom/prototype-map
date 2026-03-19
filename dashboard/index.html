@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Prototype Map</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-top">
+        <h1 class="logo">
+          <span class="logo-icon">P</span>
+          Prototype Map
+        </h1>
+      </div>
+      <div class="sidebar-section">
+        <h2 class="sidebar-heading">Projects</h2>
+        <ul class="project-list" id="projectList"></ul>
+      </div>
+      <div class="sidebar-actions">
+        <button class="btn btn-ghost btn-small" id="addProjectBtn">+ Add project</button>
+      </div>
+      <div class="add-project-form" id="addProjectForm" style="display:none">
+        <div class="field">
+          <label for="newName">Name</label>
+          <input type="text" id="newName" placeholder="e.g. NHS Appointments">
+        </div>
+        <div class="field">
+          <label for="newPath">Path</label>
+          <input type="text" id="newPath" placeholder="e.g. ~/git/my-prototype">
+        </div>
+        <div class="field">
+          <label for="newBaseUrl">Base URL</label>
+          <input type="text" id="newBaseUrl" placeholder="http://localhost:3000" value="http://localhost:3000">
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary btn-small" id="saveProjectBtn">Save</button>
+          <button class="btn btn-small" id="cancelProjectBtn">Cancel</button>
+        </div>
+      </div>
+      <div class="server-status" id="serverStatus">
+        <span class="status-dot"></span> Server connected
+      </div>
+    </aside>
+
+    <main class="main" id="main">
+      <div class="empty-state" id="emptyState">
+        <div class="empty-state-icon">&#9878;</div>
+        <h2>Select a project</h2>
+        <p>Choose a project from the sidebar, or add a new one.</p>
+      </div>
+    </main>
+  </div>
+
+  <!-- Project detail template -->
+  <template id="projectDetailTpl">
+    <div class="project-detail">
+      <header class="project-header">
+        <div class="project-header-info">
+          <h2 class="project-name"></h2>
+          <span class="project-meta"></span>
+        </div>
+        <div class="project-actions">
+          <div class="field field-inline">
+            <label for="roundSelect">Round</label>
+            <input type="number" id="roundSelect" value="1" min="1" max="999" class="input-small">
+          </div>
+          <button class="btn btn-primary" id="captureBtn">Capture all</button>
+          <button class="btn" id="deployBtn">Deploy</button>
+        </div>
+      </header>
+
+      <div class="capture-progress" id="captureProgress" style="display:none">
+        <div class="progress-bar">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+        <p class="progress-text" id="progressText">Starting capture...</p>
+      </div>
+
+      <section class="section">
+        <h3>Journeys</h3>
+        <div class="journey-list" id="journeyList">
+          <p class="muted">No journeys recorded yet. Use the browser extension to record one.</p>
+        </div>
+      </section>
+
+      <section class="section">
+        <h3>Screenshots</h3>
+        <div class="screenshot-grid" id="screenshotGrid">
+          <p class="muted">No screenshots yet. Run a capture first.</p>
+        </div>
+      </section>
+    </div>
+  </template>
+
+  <!-- Lightbox -->
+  <div class="lightbox" id="lightbox" style="display:none">
+    <div class="lightbox-backdrop"></div>
+    <div class="lightbox-content">
+      <button class="lightbox-close" id="lightboxClose">&times;</button>
+      <img class="lightbox-img" id="lightboxImg">
+      <p class="lightbox-caption" id="lightboxCaption"></p>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

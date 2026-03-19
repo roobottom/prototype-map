@@ -114,7 +114,12 @@ async function submitForm(browserPage, submit) {
  * Default mode: replays the journey in order, keeping session state between pages.
  * This ensures form submissions carry forward (e.g. answers stored in session).
  */
-export async function capture(opts) {
+/**
+ * @param {object} opts - Capture options
+ * @param {function} [onProgress] - Optional callback for progress events.
+ *   Called with { type: 'progress'|'complete', data: {...} }
+ */
+export async function capture(opts, onProgress) {
   const config = loadConfig(opts.config);
   const round = opts.round ? Number(opts.round) : config.round;
   const outDir = resolve(opts.out);
@@ -124,28 +129,43 @@ export async function capture(opts) {
 
   const pageMap = new Map(config.pages.map(p => [p.id, p]));
 
+  // Count total steps for progress reporting
+  const totalSteps = countTotalSteps(config, opts.journey);
+
+  const emit = onProgress || (() => {});
+
   if (opts.journey) {
-    // Capture a specific journey
     const journey = config.journeys.find(j => j.id === opts.journey);
     if (!journey) throw new Error(`Journey "${opts.journey}" not found in config`);
-    const result = await captureJourney(config, journey, pageMap, screenshotDir, 1);
+    const result = await captureJourney(config, journey, pageMap, screenshotDir, 1, totalSteps, emit);
     writeManifest(screenshotDir, result.manifest, result.capturedCount);
+    emit({ type: 'complete', data: { totalCaptured: result.capturedCount } });
   } else if (config.journeys.length > 0) {
-    // Capture all journeys
     const allManifest = [];
     let totalCaptured = 0;
     let stepNumber = 1;
     for (const journey of config.journeys) {
-      const result = await captureJourney(config, journey, pageMap, screenshotDir, stepNumber);
+      const result = await captureJourney(config, journey, pageMap, screenshotDir, stepNumber, totalSteps, emit);
       allManifest.push(...result.manifest);
       totalCaptured += result.capturedCount;
       stepNumber = result.nextStep;
     }
     writeManifest(screenshotDir, allManifest, totalCaptured);
+    emit({ type: 'complete', data: { totalCaptured } });
   } else {
-    // No journeys — capture pages independently
-    await captureIndependent(config, config.pages, screenshotDir, opts);
+    await captureIndependent(config, config.pages, screenshotDir, opts, totalSteps, emit);
   }
+}
+
+function countTotalSteps(config, journeyId) {
+  if (journeyId) {
+    const j = config.journeys.find(j => j.id === journeyId);
+    return j ? j.steps.length + 1 : 0;
+  }
+  if (config.journeys.length > 0) {
+    return config.journeys.reduce((sum, j) => sum + j.steps.length + 1, 0);
+  }
+  return config.pages.reduce((sum, p) => sum + Math.max((p.states?.length || 0), 1), 0);
 }
 
 function writeManifest(screenshotDir, manifest, capturedCount) {
@@ -160,7 +180,7 @@ function writeManifest(screenshotDir, manifest, capturedCount) {
  * Screenshots each page after filling forms but before submitting.
  * Returns { manifest, capturedCount, nextStep } for the caller to aggregate.
  */
-async function captureJourney(config, journey, pageMap, screenshotDir, startStep) {
+async function captureJourney(config, journey, pageMap, screenshotDir, startStep, totalSteps, emit) {
   console.log(`Replaying journey "${journey.label || journey.id}"...`);
 
   const browser = await chromium.launch();
@@ -255,6 +275,7 @@ async function captureJourney(config, journey, pageMap, screenshotDir, startStep
           });
           capturedCount++;
           captured.add(captureKey);
+          emit({ type: 'progress', data: { step: stepNumber, total: totalSteps, filename, title } });
           stepNumber++;
         } else if (state?.submit) {
           // Already captured but still need to submit to advance the journey
@@ -310,7 +331,7 @@ async function captureJourney(config, journey, pageMap, screenshotDir, startStep
  * Capture pages independently (no session sharing).
  * Used when no journey is defined.
  */
-async function captureIndependent(config, pages, screenshotDir, opts) {
+async function captureIndependent(config, pages, screenshotDir, opts, totalSteps, emit) {
   let pagesToCapture = pages;
 
   if (opts.page) {
@@ -380,6 +401,7 @@ async function captureIndependent(config, pages, screenshotDir, opts) {
           note: ''
         });
         capturedCount++;
+        emit({ type: 'progress', data: { step: stepNumber, total: totalSteps, filename, title: label } });
       } catch (err) {
         const label = state?.label || page.label || page.id;
         console.error(`  ERROR capturing ${page.id}${state ? `--${state.id}` : ''}: ${err.message}`);
