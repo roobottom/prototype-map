@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 'fs';
-import { join, resolve, dirname } from 'path';
+import { join, resolve, dirname, basename } from 'path';
+import { execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { chromium } from 'playwright';
 import { loadConfig } from './config.js';
@@ -72,11 +73,57 @@ function findScreenshot(dir, basePattern) {
   return null;
 }
 
+function loadManifest(dir) {
+  if (!dir) return [];
+  const manifestPath = join(dir, 'manifest.json');
+  if (!existsSync(manifestPath)) return [];
+  try {
+    return JSON.parse(readFileSync(manifestPath, 'utf8'));
+  } catch {
+    return [];
+  }
+}
+
+function assetUrl(folder, file) {
+  return `${folder}/${encodeURIComponent(file)}`;
+}
+
+async function ensureMapAssets(screenshotDir, mapDir, manifest, fullUrlForFile) {
+  const assets = new Map();
+  if (!screenshotDir || !Array.isArray(manifest) || manifest.length === 0) {
+    return assets;
+  }
+
+  const thumbsDir = join(mapDir, 'thumbs');
+  mkdirSync(thumbsDir, { recursive: true });
+
+  for (const entry of manifest) {
+    const sourcePath = join(screenshotDir, entry.file);
+    if (!existsSync(sourcePath)) continue;
+
+    const thumbPath = join(thumbsDir, entry.file);
+
+    try {
+      execFileSync('sips', ['-Z', '400', sourcePath, '--out', thumbPath], { stdio: 'ignore' });
+    } catch {
+      writeFileSync(thumbPath, readFileSync(sourcePath));
+    }
+
+    assets.set(entry.file, {
+      thumbUrl: assetUrl('thumbs', entry.file),
+      fullUrl: fullUrlForFile(entry.file)
+    });
+  }
+
+  return assets;
+}
+
 /**
  * Build HTML content for nodes from ELK layout result.
  */
-function renderNodes(layout, screenshotDir, embedScreenshots) {
+function renderNodes(layout, screenshotDir, embedScreenshots, manifest, assetMap) {
   const lines = [];
+  const manifestEntries = Array.isArray(manifest) ? manifest : [];
 
   for (const node of (layout.children || [])) {
     const label = node.labels?.[0]?.text || node.id;
@@ -84,17 +131,41 @@ function renderNodes(layout, screenshotDir, embedScreenshots) {
     const stateId = node.stateId;
     // Find screenshot file — may have a step-number prefix like "01-pageId.png"
     const basePattern = stateId ? `${pageId}--${stateId}.png` : `${pageId}.png`;
-    const screenshotPath = screenshotDir ? findScreenshot(screenshotDir, basePattern) : null;
+    let screenshotPath = null;
+    if (screenshotDir && typeof node.manifestIndex === 'number') {
+      const manifestEntry = manifestEntries[node.manifestIndex];
+      if (manifestEntry?.file) {
+        const manifestPath = join(screenshotDir, manifestEntry.file);
+        if (existsSync(manifestPath)) {
+          screenshotPath = manifestPath;
+        }
+      }
+    }
+    if (!screenshotPath) {
+      screenshotPath = screenshotDir ? findScreenshot(screenshotDir, basePattern) : null;
+    }
+    if (!screenshotPath && screenshotDir && typeof node.visitIndex === 'number') {
+      const fallbackEntry = manifestEntries[node.visitIndex];
+      if (fallbackEntry?.file) {
+        const fallbackPath = join(screenshotDir, fallbackEntry.file);
+        if (existsSync(fallbackPath)) {
+          screenshotPath = fallbackPath;
+        }
+      }
+    }
+
+    let screenshotFile = screenshotPath ? basename(screenshotPath) : null;
+    if (!screenshotFile && typeof node.manifestIndex === 'number') {
+      screenshotFile = manifestEntries[node.manifestIndex]?.file || null;
+    }
 
     let thumbHtml = '<div class="node-no-thumb">No screenshot</div>';
     let screenshotAttr = '';
+    const asset = screenshotFile ? assetMap.get(screenshotFile) : null;
 
-    if (embedScreenshots && screenshotPath && existsSync(screenshotPath)) {
-      const imgData = readFileSync(screenshotPath);
-      const base64 = imgData.toString('base64');
-      const dataUrl = `data:image/png;base64,${base64}`;
-      thumbHtml = `<img class="node-thumb" src="${dataUrl}" alt="${escapeHtml(label)}">`;
-      screenshotAttr = ` data-screenshot="${dataUrl}"`;
+    if (embedScreenshots && asset) {
+      thumbHtml = `<img class="node-thumb" src="${asset.thumbUrl}" alt="${escapeHtml(label)}">`;
+      screenshotAttr = ` data-screenshot="${asset.fullUrl}"`;
     }
 
     lines.push(
@@ -117,28 +188,29 @@ function escapeHtml(str) {
  */
 export async function map(opts) {
   const config = loadConfig(opts.config);
-  const outDir = resolve(opts.out);
-  const mapDir = join(outDir, 'maps');
+  const mapDir = join(resolve(opts.mapDir || dirname(resolve(opts.config))), 'maps');
   mkdirSync(mapDir, { recursive: true });
 
-  const round = opts.round ? Number(opts.round) : config.round;
   const screenshotDir = opts.embedScreenshots
-    ? join(outDir, 'screenshots', `round-${round}`)
+    ? opts.screenshotDir || null
     : null;
+  const manifest = opts.embedScreenshots ? loadManifest(screenshotDir) : [];
 
-  const journeyId = opts.journey || null;
   const format = opts.format || 'html';
 
   console.log(`Generating journey map...`);
 
-  const layout = await computeLayout(config, journeyId);
+  const layout = await computeLayout(config, null);
+  const assetMap = opts.embedScreenshots
+    ? await ensureMapAssets(screenshotDir, mapDir, manifest, opts.fullScreenshotUrlForFile || ((file) => file))
+    : new Map();
 
   // Compute canvas size
   const canvasWidth = Math.max(...(layout.children || []).map(n => n.x + n.width)) + 100;
   const canvasHeight = Math.max(...(layout.children || []).map(n => n.y + n.height)) + 100;
 
   // Build HTML content
-  const nodesHtml = renderNodes(layout, screenshotDir, opts.embedScreenshots);
+  const nodesHtml = renderNodes(layout, screenshotDir, opts.embedScreenshots, manifest, assetMap);
   const edgesSvg = renderEdgesSvg(layout);
   const svgTag = `<svg class="edges" width="${canvasWidth}" height="${canvasHeight}" viewBox="0 0 ${canvasWidth} ${canvasHeight}">\n${edgesSvg}\n</svg>`;
   const contentHtml = svgTag + '\n' + nodesHtml;
@@ -146,16 +218,14 @@ export async function map(opts) {
   // Load template and substitute
   const template = readFileSync(templatePath, 'utf8');
   const title = config.name;
-  const subtitle = journeyId
-    ? config.journeys.find(j => j.id === journeyId)?.label || journeyId
-    : `${config.journeys.length} journey(s)`;
+  const subtitle = `${config.steps?.length || 0} step(s)`;
 
   const html = template
     .replace(/\{\{TITLE\}\}/g, escapeHtml(title))
     .replace(/\{\{SUBTITLE\}\}/g, escapeHtml(subtitle))
     .replace('{{CONTENT}}', contentHtml);
 
-  const baseName = journeyId || 'all-journeys';
+  const baseName = 'journey-map';
 
   // Write HTML
   if (format === 'html' || format === 'all') {

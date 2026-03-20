@@ -16,7 +16,6 @@ const schema = {
         height: { type: 'number', default: 900 }
       }
     },
-    round: { type: 'number', default: 1 },
     pages: {
       type: 'array',
       minItems: 0,
@@ -63,29 +62,17 @@ const schema = {
         target: { type: 'string' }
       }
     },
-    journeys: {
+    steps: {
       type: 'array',
       items: {
         type: 'object',
-        required: ['id', 'steps'],
+        required: ['from', 'to'],
         properties: {
-          id: { type: 'string' },
+          from: { type: 'string' },
+          to: { type: 'string' },
           label: { type: 'string' },
-          round: { type: 'number' },
-          steps: {
-            type: 'array',
-            items: {
-              type: 'object',
-              required: ['from', 'to'],
-              properties: {
-                from: { type: 'string' },
-                to: { type: 'string' },
-                label: { type: 'string' },
-                fromState: { type: 'string' },
-                toState: { type: 'string' }
-              }
-            }
-          }
+          fromState: { type: 'string' },
+          toState: { type: 'string' }
         }
       }
     }
@@ -119,8 +106,7 @@ export function loadConfig(configPath) {
 
   // Apply defaults
   config.viewport = config.viewport || { width: 1280, height: 900 };
-  config.round = config.round || 1;
-  config.journeys = config.journeys || [];
+  config.steps = config.steps || [];
 
   return config;
 }

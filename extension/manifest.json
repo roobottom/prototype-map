@@ -5,6 +5,7 @@
   "description": "Record prototype journeys with form data for prototype-map",
   "permissions": [
     "activeTab",
+    "alarms",
     "storage",
     "tabs",
     "webNavigation"

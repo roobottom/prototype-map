@@ -1,18 +1,13 @@
 # prototype-map
 
-Screenshot capture and journey map generator for prototypes.
+Screenshot capture and journey map generator for browser-based prototypes.
 
-Two things eat up time when building prototypes: taking screenshots of pages (especially different states like error screens) and creating journey maps that show how screens connect. This tool automates both.
+The tool has four parts:
 
-## How it works
-
-```
-1. REGISTER        2. RECORD           3. EDIT CONFIG       4. CAPTURE + MAP
-   Point at your   →  Click through   →  Refine the YAML  →  Screenshots + journey map
-   prototype          your prototype     that was generated   generated automatically
-```
-
-You register your prototype project, record journeys by clicking through it, then tweak the generated YAML config. One command captures every screenshot and builds an interactive journey map.
+1. Register a project in `projects/<project-slug>/`
+2. Record a journey with the Chrome extension
+3. Refine the generated `config.yaml`
+4. Replay that journey to capture screenshots and generate a map
 
 ## Install
 
@@ -21,61 +16,89 @@ npm install
 npx playwright install chromium
 ```
 
+## Project layout
+
+Recorded data lives inside this repo:
+
+```text
+projects/
+  <project-slug>/
+    <journey-slug>/
+      config.yaml
+      screenshots/
+        manifest.json
+        01-start.png
+        02-check-details.png
+      maps/
+        journey-map.html
+        journey-map.png
+        journey-map.svg
+```
+
+Each journey has its own config and output directory.
+
 ## Quick start
 
 ### 1. Install the browser extension
 
-The extension runs in your normal Chrome, captures navigation, form submissions, and click interactions, then writes the config file.
-
 1. Open Chrome and go to `chrome://extensions`
-2. Enable "Developer mode" (top right toggle)
-3. Click "Load unpacked" and select the `extension/` folder in this project
+2. Enable Developer mode
+3. Click Load unpacked
+4. Select the [`extension/`](/Users/roobottom/git/prototype-map/extension) folder
 
-### 2. Register a prototype project
+The extension only injects into `http://localhost/*` pages by default.
+
+### 2. Create a project
 
 ```bash
 npx prototype-map init
 ```
 
-This prompts for:
-- **Project name** — a label for the extension dropdown (e.g. "NHS Appointments")
-- **Project path** — where the prototype lives (e.g. `~/git/my-prototype`)
-- **Base URL** — where the prototype runs (e.g. `http://localhost:3000`)
+This creates `projects/<project-slug>/`.
 
-Projects are saved to `projects.json` in this directory (gitignored — each user has their own list). You can register as many projects as you like.
+### 3. Start the local server
 
-### 3. Record a journey
+```bash
+npm run serve
+```
 
-1. Start the recording server:
-   ```bash
-   npm run serve
-   ```
-2. Open your prototype in Chrome
-3. Click the Prototype Map extension icon in the toolbar
-4. Select your project from the dropdown
-5. Give your recording a journey name (e.g. "Adding availability") and set the round number
-6. Click **Start recording**
-7. Click through your prototype — every page navigation, form submission, and click interaction is captured
-8. When done, click **Stop recording**
-9. The server writes the config to `<your-project>/.prototype-map/config.yaml`
+That starts:
 
-To add more journeys, just record again with a different name. Recording with the same name replaces the existing journey.
+- the extension API at `http://localhost:4444`
+- the dashboard at `http://localhost:4444/dashboard/`
 
-### 4. Edit the config
+### 4. Record a journey
 
-Open `.prototype-map/config.yaml` in your prototype project. The recorder captures the basics — pages visited, form data, the order, link text — but you'll want to refine it. Add labels, define page states, and describe the journeys.
+1. Open your prototype in Chrome
+2. Open the Prototype Map extension popup
+3. Select a project
+4. Enter a journey name
+5. Click Start recording
+6. Click through the prototype
+7. Click Stop recording
 
-Here's what a config looks like:
+The server writes the result to:
+
+```text
+projects/<project-slug>/<journey-slug>/config.yaml
+```
+
+Recording the same journey name again replaces that journey's config.
+
+### 5. Refine the generated config
+
+The recorder captures pages, transitions, query-param states, and form submissions, but the generated YAML is intended to be edited.
+
+Example:
 
 ```yaml
 name: "Apply for a juggling licence"
 baseUrl: "http://localhost:3000"
 viewport: { width: 1280, height: 900 }
-round: 1
 
 pages:
   - id: start
-    path: /start
+    path: /
     label: "Start page"
 
   - id: name
@@ -105,78 +128,96 @@ pages:
     path: /confirmation
     label: "Application submitted"
 
-journeys:
-  - id: happy-path
-    label: "Happy path"
-    round: 1
-    steps:
-      - { from: start, to: name, label: "Start now" }
-      - { from: name, to: address }
-      - { from: address, to: check }
-      - { from: check, to: done, label: "Submit" }
+steps:
+  - { from: start, to: name, label: "Start now" }
+  - { from: name, to: address }
+  - { from: address, to: check }
+  - { from: check, to: done, label: "Submit" }
 ```
 
-Pages and journeys are separate concerns. Pages define what exists. Journeys define how they connect.
+`pages` define what can be visited. `steps` define the ordered transitions used for the map and journey replay.
 
-### 5. Capture screenshots
+### 6. Capture screenshots
 
 ```bash
-npm run capture
+npm run capture -- --project my-project --journey happy-path
 ```
 
-Screenshots land in `.prototype-map/output/screenshots/round-1/`. Each page gets a PNG with a step number prefix for easy sorting: `01-start.png`, `02-name--blank.png`, `03-name--error.png`. A `manifest.json` is also generated with metadata for each screenshot (title, URL, timestamp).
+Screenshots are written to:
 
-### 6. Generate a journey map
-
-```bash
-npx prototype-map map --format all
+```text
+projects/my-project/happy-path/screenshots/
 ```
 
-This produces an interactive HTML file (with pan, zoom, and a lightbox for full screenshots) plus a static PNG and SVG for pasting into blog posts or slide decks. Output goes to `.prototype-map/output/maps/`.
+Each image gets a step prefix for stable ordering, for example `01-start.png` or `03-name--error.png`.
 
-### Or do both at once
+### 7. Generate the map
 
 ```bash
-npm run run -- --format all --embed-screenshots
+npm run map -- --project my-project --journey happy-path --format all --embed-screenshots
+```
+
+Map output is written to:
+
+```text
+projects/my-project/happy-path/maps/
+```
+
+### Or run both
+
+```bash
+npm run run -- --project my-project --journey happy-path --format all --embed-screenshots
 ```
 
 ## Commands
 
 | Command | What it does |
 |---|---|
-| `init` | Register a prototype project for use with the extension |
-| `serve` | Start the recording server for the browser extension |
-| `capture` | Take screenshots from config |
-| `map` | Generate journey map |
-| `run` | Capture + map in one step |
-| `deploy` | Copy screenshots + manifest to another project |
+| `init` | Create a project directory under `projects/` |
+| `serve` | Start the local server and dashboard |
+| `capture` | Replay a journey and save screenshots |
+| `map` | Build HTML/PNG/SVG map output |
+| `run` | Run `capture` then `map` |
+| `deploy` | Copy a journey's screenshots folder to another location |
 
-### Common options
+## CLI usage
 
-```
--c, --config <path>       Config file (default: .prototype-map/config.yaml)
--o, --out <dir>           Output directory (default: .prototype-map/output)
---round <n>               Override the round number
---page <id>               Capture a specific page only
---journey <id>            Capture/map a specific journey only
---format <html|png|svg|all>  Map output format (default: html)
---embed-screenshots       Show screenshot thumbnails inside map nodes
-```
-
-## Multiple projects
-
-Register as many projects as you like:
+### `capture`
 
 ```bash
-npx prototype-map init --name "NHS Appointments" --path ~/git/nhs-prototype --url http://localhost:3000
-npx prototype-map init --name "Apply for a licence" --path ~/git/licence-proto --url http://localhost:4000
+npx prototype-map capture --project <project-slug> --journey <journey-slug>
 ```
 
-The extension dropdown lets you switch between them. Each project gets its own `.prototype-map/` directory with its own config and output.
+### `map`
+
+```bash
+npx prototype-map map --project <project-slug> --journey <journey-slug> [--format html|png|svg|all] [--embed-screenshots]
+```
+
+### `run`
+
+```bash
+npx prototype-map run --project <project-slug> --journey <journey-slug> [--format html|png|svg|all] [--embed-screenshots]
+```
+
+### `deploy`
+
+```bash
+npx prototype-map deploy --project <project-slug> --journey <journey-slug> [--target <path>]
+```
+
+If `--target` is omitted, the tool uses:
+
+```yaml
+deploy:
+  target: ../somewhere/screens
+```
+
+from that journey's `config.yaml`.
 
 ## Page states
 
-States let you capture the same page in different conditions. There are several ways to trigger a state:
+States let you capture the same page in different conditions.
 
 ### Query parameters
 
@@ -187,8 +228,6 @@ states:
     params: { error: true }
 ```
 
-Visits `/name?error=true`.
-
 ### Cookies
 
 ```yaml
@@ -197,8 +236,6 @@ states:
     label: "With previous answer"
     cookies: { name: "Jo Smith" }
 ```
-
-Sets cookies before visiting the page. Useful for prototypes that store answers in session.
 
 ### Form data
 
@@ -215,19 +252,17 @@ states:
     submit: true
 ```
 
-Fills in form fields and optionally submits. Supported actions:
+Supported actions:
 
-- **Text fields**: `{ field: "#name", value: "Jo Smith" }`
-- **Checkboxes**: `{ field: "#agree", action: check }` or `action: uncheck`
-- **Dropdowns**: `{ field: "#country", value: "Wales", action: select }`
-- **Click**: `{ field: "button:has-text(\"Add another\")", action: click }` — clicks an element (e.g. to reveal hidden fields)
-- **Submit**: `submit: true` clicks the submit button. Use `submit: ".my-button"` for a specific button.
-
-The browser extension captures all of these automatically during recording, including clicks that trigger DOM changes (like "Add another" buttons that reveal extra form fields).
+- text input: `{ field: "#name", value: "Jo Smith" }`
+- checkbox: `{ field: "#agree", action: check }`
+- uncheck: `{ field: "#agree", action: uncheck }`
+- select: `{ field: "#country", value: "Wales", action: select }`
+- click: `{ field: "button:has-text(\"Add another\")", action: click }`
 
 ### Setup scripts
 
-For anything the above can't handle, write Playwright code directly:
+For complex setup, run Playwright code directly:
 
 ```yaml
 states:
@@ -241,50 +276,9 @@ states:
       await page.click('button[type=submit]');
 ```
 
-## Rounds
+## Manifest format
 
-Set the round number in the extension when recording. Each journey is tagged with the round it was last recorded in. Screenshots are organised by round:
-
-```
-.prototype-map/output/
-  screenshots/
-    round-1/
-    round-2/
-    round-3/
-```
-
-Or override it on the command line:
-
-```bash
-npx prototype-map capture --round 3
-```
-
-This makes it easy to compare screenshots across design rounds for blog posts or stakeholder reviews.
-
-## Deploying to another project
-
-If your prototype project has its own docs folder for design history, you can deploy screenshots directly into it:
-
-```bash
-npm run deploy -- --target ../my-prototype/docs/design-history/screens
-```
-
-This copies the current round's screenshots and `manifest.json` to `<target>/round-N/`.
-
-To avoid typing the path every time, set it in your config:
-
-```yaml
-deploy:
-  target: ../my-prototype/docs/design-history/screens
-```
-
-Then just run:
-
-```bash
-npm run deploy
-```
-
-The manifest contains structured metadata for each screenshot:
+Each capture writes `screenshots/manifest.json`:
 
 ```json
 [
@@ -292,35 +286,15 @@ The manifest contains structured metadata for each screenshot:
     "step": "01-start",
     "file": "01-start.png",
     "title": "Start page",
-    "url": "http://localhost:3000/start",
-    "capturedAt": "2026-03-18T10:30:00.000Z",
+    "url": "http://localhost:3000/",
+    "capturedAt": "2026-03-19T10:30:00.000Z",
     "note": ""
   }
 ]
 ```
 
-## Output
+## Notes
 
-```
-.prototype-map/output/
-├── screenshots/
-│   ├── round-1/
-│   │   ├── manifest.json
-│   │   ├── 01-start.png
-│   │   ├── 02-name--blank.png
-│   │   ├── 03-name--error.png
-│   │   ├── 04-name--prefilled.png
-│   │   ├── 05-address.png
-│   │   ├── 06-check.png
-│   │   └── 07-done.png
-│   └── round-2/
-│       └── ...
-└── maps/
-    ├── happy-path.html      # interactive, with pan/zoom
-    ├── happy-path.png       # static, for blog posts
-    └── happy-path.svg       # static, for slides
-```
-
-## Works with any prototype
-
-This tool doesn't care what your prototype is built with. It just needs a URL. GOV.UK Prototype Kit, static HTML, React, Next.js, whatever — if it runs in a browser, it works.
+- The recorder captures the basics, not a perfect final config.
+- The dashboard can trigger capture and deploy, but map generation is currently CLI-driven.
+- The map generator requires `steps`; it will fail if a config only defines pages.

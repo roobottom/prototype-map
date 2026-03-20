@@ -17,7 +17,6 @@ program
   .command('init')
   .description('Create a new project')
   .option('-n, --name <name>', 'Project name')
-  .option('-u, --url <url>', 'Base URL of the prototype')
   .action(async (opts) => {
     const { init } = await import('../src/init.js');
     await init(opts);
@@ -34,79 +33,72 @@ program
 
 program
   .command('capture')
-  .description('Take screenshots of pages and states defined in config')
-  .requiredOption('--project <slug>', 'Project to capture')
-  .option('--round <n>', 'Override round number from config')
-  .option('--page <id>', 'Capture only a specific page')
-  .option('--journey <id>', 'Capture only pages in a specific journey')
+  .description('Take screenshots for a journey')
+  .requiredOption('--project <slug>', 'Project slug')
+  .requiredOption('--journey <slug>', 'Journey slug')
   .action(async (opts) => {
-    const { getConfigPath, getOutputDir } = await import('../src/registry.js');
+    const { getConfigPath, getScreenshotDir } = await import('../src/registry.js');
     const { capture } = await import('../src/capture.js');
     await capture({
-      config: getConfigPath(opts.project),
-      out: getOutputDir(opts.project),
-      round: opts.round,
-      page: opts.page,
-      journey: opts.journey
+      config: getConfigPath(opts.project, opts.journey),
+      screenshotDir: getScreenshotDir(opts.project, opts.journey)
     });
   });
 
 program
   .command('map')
   .description('Generate journey map visualization')
-  .requiredOption('--project <slug>', 'Project to map')
+  .requiredOption('--project <slug>', 'Project slug')
+  .requiredOption('--journey <slug>', 'Journey slug')
   .option('--format <type>', 'Output format: html, png, svg, or all', 'html')
-  .option('--journey <id>', 'Map a specific journey')
   .option('--embed-screenshots', 'Embed screenshot thumbnails in map nodes')
-  .option('--round <n>', 'Round to use for screenshot thumbnails')
   .action(async (opts) => {
-    const { getConfigPath, getOutputDir } = await import('../src/registry.js');
+    const { getConfigPath, getScreenshotDir, getJourneyDir } = await import('../src/registry.js');
     const { map } = await import('../src/map.js');
     await map({
-      config: getConfigPath(opts.project),
-      out: getOutputDir(opts.project),
+      config: getConfigPath(opts.project, opts.journey),
+      mapDir: getJourneyDir(opts.project, opts.journey),
+      screenshotDir: getScreenshotDir(opts.project, opts.journey),
       format: opts.format,
-      journey: opts.journey,
-      embedScreenshots: opts.embedScreenshots,
-      round: opts.round
+      embedScreenshots: opts.embedScreenshots
     });
   });
 
 program
   .command('run')
   .description('Capture screenshots and generate map in one step')
-  .requiredOption('--project <slug>', 'Project to run')
-  .option('--round <n>', 'Override round number from config')
+  .requiredOption('--project <slug>', 'Project slug')
+  .requiredOption('--journey <slug>', 'Journey slug')
   .option('--format <type>', 'Map format: html, png, svg, or all', 'html')
-  .option('--journey <id>', 'Specific journey only')
   .option('--embed-screenshots', 'Embed screenshot thumbnails in map nodes')
   .action(async (opts) => {
-    const { getConfigPath, getOutputDir } = await import('../src/registry.js');
+    const { getConfigPath, getScreenshotDir, getJourneyDir } = await import('../src/registry.js');
     const { capture } = await import('../src/capture.js');
     const { map } = await import('../src/map.js');
-    const shared = {
-      config: getConfigPath(opts.project),
-      out: getOutputDir(opts.project),
-      round: opts.round,
-      journey: opts.journey
-    };
-    await capture(shared);
-    await map({ ...shared, format: opts.format, embedScreenshots: opts.embedScreenshots });
+    const configPath = getConfigPath(opts.project, opts.journey);
+    const screenshotDir = getScreenshotDir(opts.project, opts.journey);
+    await capture({ config: configPath, screenshotDir });
+    await map({
+      config: configPath,
+      mapDir: getJourneyDir(opts.project, opts.journey),
+      screenshotDir,
+      format: opts.format,
+      embedScreenshots: opts.embedScreenshots
+    });
   });
 
 program
   .command('deploy')
-  .description('Copy screenshots and manifest to a target project directory')
-  .requiredOption('--project <slug>', 'Project to deploy')
-  .option('--round <n>', 'Override round number from config')
+  .description('Copy screenshots and manifest to a target directory')
+  .requiredOption('--project <slug>', 'Project slug')
+  .requiredOption('--journey <slug>', 'Journey slug')
   .option('--target <path>', 'Destination directory (or set deploy.target in config)')
   .action(async (opts) => {
-    const { getConfigPath, getOutputDir } = await import('../src/registry.js');
+    const { getConfigPath, getScreenshotDir } = await import('../src/registry.js');
     const { deploy } = await import('../src/deploy.js');
     await deploy({
-      config: getConfigPath(opts.project),
-      out: getOutputDir(opts.project),
-      round: opts.round,
+      config: getConfigPath(opts.project, opts.journey),
+      screenshotDir: getScreenshotDir(opts.project, opts.journey),
       target: opts.target
     });
   });

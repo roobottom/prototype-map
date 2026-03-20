@@ -1,7 +1,6 @@
 name: "Apply for a juggling licence"
 baseUrl: "https://example.com"
 viewport: { width: 1280, height: 900 }
-round: 1
 
 pages:
   - id: start
@@ -20,11 +19,8 @@ pages:
     path: /done
     label: "Application submitted"
 
-journeys:
-  - id: happy-path
-    label: "Happy path"
-    steps:
-      - { from: start, to: name, label: "Start now" }
-      - { from: name, to: address }
-      - { from: address, to: check }
-      - { from: check, to: done, label: "Submit" }
+steps:
+  - { from: start, to: name, label: "Start now" }
+  - { from: name, to: address }
+  - { from: address, to: check }
+  - { from: check, to: done, label: "Submit" }

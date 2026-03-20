@@ -14,70 +14,111 @@ export function getProjectsDir() {
 }
 
 /**
- * Get the absolute path to a project's directory by slug.
+ * Get the absolute path to a project's directory.
  */
-export function getProjectDir(slug) {
-  return join(PROJECTS_DIR, slug);
+export function getProjectDir(projectSlug) {
+  return join(PROJECTS_DIR, projectSlug);
 }
 
 /**
- * Get the config file path for a project.
+ * Get the absolute path to a journey's directory.
  */
-export function getConfigPath(slug) {
-  return join(PROJECTS_DIR, slug, 'config.yaml');
+export function getJourneyDir(projectSlug, journeySlug) {
+  return join(PROJECTS_DIR, projectSlug, journeySlug);
 }
 
 /**
- * Get the output directory for a project.
+ * Get the config file path for a journey.
  */
-export function getOutputDir(slug) {
-  return join(PROJECTS_DIR, slug, 'output');
+export function getConfigPath(projectSlug, journeySlug) {
+  return join(PROJECTS_DIR, projectSlug, journeySlug, 'config.yaml');
 }
 
 /**
- * Scan the projects/ directory and return all registered projects.
- * Each project is a subfolder containing a config.yaml.
+ * Get the screenshot directory for a journey.
+ */
+export function getScreenshotDir(projectSlug, journeySlug) {
+  return join(PROJECTS_DIR, projectSlug, journeySlug, 'screenshots');
+}
+
+/**
+ * Get the map directory for a journey.
+ */
+export function getMapDir(projectSlug, journeySlug) {
+  return join(PROJECTS_DIR, projectSlug, journeySlug, 'maps');
+}
+
+/**
+ * Titlecase a slug: "mya-provocotype" → "Mya Provocotype"
+ */
+function titleCase(slug) {
+  return slug
+    .split('-')
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+/**
+ * Scan the projects/ directory and return all projects with their journeys.
+ * Returns: [{ slug, name, journeys: [{ slug, name, baseUrl }] }]
  */
 export function loadRegistry() {
   if (!existsSync(PROJECTS_DIR)) return [];
 
-  const entries = readdirSync(PROJECTS_DIR, { withFileTypes: true });
+  const projectDirs = readdirSync(PROJECTS_DIR, { withFileTypes: true })
+    .filter(d => d.isDirectory());
+
   const projects = [];
 
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
+  for (const projectDir of projectDirs) {
+    const projectPath = join(PROJECTS_DIR, projectDir.name);
+    const journeys = [];
 
-    const configPath = join(PROJECTS_DIR, entry.name, 'config.yaml');
-    if (!existsSync(configPath)) continue;
-
+    // Scan for journey subdirectories containing config.yaml
+    let subDirs;
     try {
-      const raw = readFileSync(configPath, 'utf8');
-      const config = yaml.load(raw);
-      projects.push({
-        slug: entry.name,
-        name: config.name || entry.name,
-        baseUrl: config.baseUrl || 'http://localhost:3000',
-        round: config.round || 1
-      });
+      subDirs = readdirSync(projectPath, { withFileTypes: true })
+        .filter(d => d.isDirectory());
     } catch {
-      // Skip invalid configs
-      projects.push({
-        slug: entry.name,
-        name: entry.name,
-        baseUrl: 'http://localhost:3000',
-        round: 1
-      });
+      subDirs = [];
     }
+
+    for (const journeyDir of subDirs) {
+      const configPath = join(projectPath, journeyDir.name, 'config.yaml');
+      if (!existsSync(configPath)) continue;
+
+      try {
+        const raw = readFileSync(configPath, 'utf8');
+        const config = yaml.load(raw);
+        journeys.push({
+          slug: journeyDir.name,
+          name: config.name || titleCase(journeyDir.name),
+          baseUrl: config.baseUrl || 'http://localhost:3000'
+        });
+      } catch {
+        journeys.push({
+          slug: journeyDir.name,
+          name: titleCase(journeyDir.name),
+          baseUrl: 'http://localhost:3000'
+        });
+      }
+    }
+
+    projects.push({
+      slug: projectDir.name,
+      name: titleCase(projectDir.name),
+      journeys
+    });
   }
 
   return projects;
 }
 
 /**
- * Create a new project directory with a config.yaml.
+ * Create a project directory.
  */
-export function createProject({ slug, name, baseUrl }) {
-  const projectDir = join(PROJECTS_DIR, slug);
+export function createProject(projectSlug) {
+  const projectDir = join(PROJECTS_DIR, projectSlug);
   mkdirSync(projectDir, { recursive: true });
   return projectDir;
 }

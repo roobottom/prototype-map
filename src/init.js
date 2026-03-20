@@ -1,10 +1,9 @@
 import { createInterface } from 'readline/promises';
 import { existsSync } from 'fs';
-import { createProject, slugify, getConfigPath } from './registry.js';
-import { writeConfig } from './config.js';
+import { createProject, slugify, getProjectDir } from './registry.js';
 
 /**
- * Create a new project under projects/[slug]/.
+ * Create a new project directory under projects/.
  */
 export async function init(opts) {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -15,38 +14,21 @@ export async function init(opts) {
       throw new Error('Project name is required');
     }
 
-    const baseUrl = opts.url || await rl.question('Base URL (http://localhost:3000): ') || 'http://localhost:3000';
-
     const slug = slugify(name.trim());
-    const configPath = getConfigPath(slug);
+    const projectDir = getProjectDir(slug);
 
-    if (existsSync(configPath)) {
-      const overwrite = await rl.question(`Project "${slug}" already exists. Overwrite config? (y/N): `);
-      if (overwrite.toLowerCase() !== 'y') {
-        console.log('Aborted.');
-        return;
-      }
+    if (existsSync(projectDir)) {
+      console.log(`Project "${slug}" already exists at projects/${slug}/`);
+      return;
     }
 
-    createProject({ slug, name: name.trim(), baseUrl });
-
-    const config = {
-      name: name.trim(),
-      baseUrl,
-      viewport: { width: 1280, height: 900 },
-      round: 1,
-      pages: [],
-      journeys: []
-    };
-
-    writeConfig(configPath, config);
+    createProject(slug);
 
     console.log(`\nProject "${name.trim()}" created.`);
     console.log(`  Directory: projects/${slug}/`);
-    console.log(`  Config:    projects/${slug}/config.yaml`);
     console.log(`\nNext steps:`);
     console.log(`  1. npm start`);
-    console.log(`  2. Select "${name.trim()}" in the extension or dashboard and start recording`);
+    console.log(`  2. Select "${name.trim()}" in the extension and record a journey`);
   } finally {
     rl.close();
   }

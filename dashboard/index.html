@@ -17,7 +17,7 @@
       </div>
       <div class="sidebar-section">
         <h2 class="sidebar-heading">Projects</h2>
-        <ul class="project-list" id="projectList"></ul>
+        <div id="projectList"></div>
       </div>
       <div class="sidebar-actions">
         <button class="btn btn-ghost btn-small" id="addProjectBtn">+ Add project</button>
@@ -26,10 +26,6 @@
         <div class="field">
           <label for="newName">Name</label>
           <input type="text" id="newName" placeholder="e.g. NHS Appointments">
-        </div>
-        <div class="field">
-          <label for="newBaseUrl">Base URL</label>
-          <input type="text" id="newBaseUrl" placeholder="http://localhost:3000" value="http://localhost:3000">
         </div>
         <div class="form-actions">
           <button class="btn btn-primary btn-small" id="saveProjectBtn">Save</button>
@@ -50,21 +46,37 @@
     </main>
   </div>
 
-  <!-- Project detail template -->
-  <template id="projectDetailTpl">
-    <div class="project-detail">
+  <!-- Journey list template (shown when a project is selected) -->
+  <template id="journeyListTpl">
+    <div class="journey-list-view">
       <header class="project-header">
         <div class="project-header-info">
           <h2 class="project-name"></h2>
           <span class="project-meta"></span>
         </div>
+      </header>
+      <section class="section">
+        <h3>Journeys</h3>
+        <div class="journey-list" id="journeyList">
+          <p class="muted">No journeys recorded yet. Use the browser extension to record one.</p>
+        </div>
+      </section>
+    </div>
+  </template>
+
+  <!-- Journey detail template (shown when a journey is selected) -->
+  <template id="journeyDetailTpl">
+    <div class="journey-detail">
+      <header class="project-header">
+        <div class="project-header-info">
+          <nav class="breadcrumb" id="breadcrumb"></nav>
+          <h2 class="project-name"></h2>
+          <span class="project-meta"></span>
+        </div>
         <div class="project-actions">
-          <div class="field field-inline">
-            <label for="roundSelect">Round</label>
-            <input type="number" id="roundSelect" value="1" min="1" max="999" class="input-small">
-          </div>
-          <button class="btn btn-primary" id="captureBtn">Capture all</button>
+          <button class="btn btn-primary" id="makeMapBtn">Make the map</button>
           <button class="btn" id="deployBtn">Deploy</button>
+          <button class="btn btn-danger" id="deleteJourneyBtn">Delete</button>
         </div>
       </header>
 
@@ -76,16 +88,12 @@
       </div>
 
       <section class="section">
-        <h3>Journeys</h3>
-        <div class="journey-list" id="journeyList">
-          <p class="muted">No journeys recorded yet. Use the browser extension to record one.</p>
+        <div class="section-heading-row">
+          <h3>Journey Map</h3>
+          <a class="btn btn-small" id="openMapBtn" href="#" target="_blank" rel="noopener" style="display:none">Open full size</a>
         </div>
-      </section>
-
-      <section class="section">
-        <h3>Screenshots</h3>
-        <div class="screenshot-grid" id="screenshotGrid">
-          <p class="muted">No screenshots yet. Run a capture first.</p>
+        <div class="map-panel" id="mapPanel">
+          <p class="muted">No map yet. Capture screenshots and generate the map.</p>
         </div>
       </section>
     </div>

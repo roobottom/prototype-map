@@ -99,8 +99,12 @@ document.addEventListener('click', (e) => {
                '';
 
   if (text) {
-    // Store for the form submit handler to pick up
-    window.__lastClickText = text;
+    chrome.runtime.sendMessage({
+      type: 'click/text',
+      payload: {
+        clickText: text
+      }
+    });
   }
 
   // For non-navigation clicks (links with # or javascript:, or buttons that aren't submit),
@@ -212,3 +216,14 @@ function findLabel(element) {
   // Fallback to name
   return element.name || '';
 }
+
+function currentHeading() {
+  const heading = document.querySelector('h1');
+  if (!heading) return '';
+  return heading.textContent?.trim().replace(/\s+/g, ' ').slice(0, 120) || '';
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type !== 'page/heading') return;
+  sendResponse({ heading: currentHeading() });
+});

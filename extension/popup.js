@@ -1,6 +1,5 @@
 const projectSelect = document.getElementById('project');
 const nameInput = document.getElementById('name');
-const roundInput = document.getElementById('round');
 const portInput = document.getElementById('port');
 const startBtn = document.getElementById('startBtn');
 const stopBtn = document.getElementById('stopBtn');
@@ -24,7 +23,6 @@ async function init() {
   const state = stored.prototypeMapState || {};
   if (state.port) portInput.value = state.port;
   if (state.name) nameInput.value = state.name;
-  if (state.round) roundInput.value = state.round;
 
   // Fetch projects from server
   await loadProjects(state.projectSlug);
@@ -76,7 +74,6 @@ async function refreshStatus() {
       stopBtn.style.display = 'block';
       portInput.disabled = true;
       nameInput.disabled = true;
-      roundInput.disabled = true;
       projectSelect.disabled = true;
     } else {
       statusEl.className = 'status idle';
@@ -85,7 +82,6 @@ async function refreshStatus() {
       stopBtn.style.display = 'none';
       portInput.disabled = false;
       nameInput.disabled = false;
-      roundInput.disabled = false;
       projectSelect.disabled = false;
     }
   } catch {
@@ -101,7 +97,6 @@ startBtn.addEventListener('click', async () => {
 
   const port = parseInt(portInput.value, 10) || 4444;
   const name = nameInput.value.trim();
-  const round = parseInt(roundInput.value, 10) || 1;
   const projectSlug = projectSelect.value;
 
   if (!projectSlug) {
@@ -113,12 +108,12 @@ startBtn.addEventListener('click', async () => {
 
   // Save state
   await chrome.storage.local.set({
-    prototypeMapState: { port, name, round, projectSlug, isRecording: false, tabId: null }
+    prototypeMapState: { port, name, projectSlug, isRecording: false, tabId: null }
   });
 
   const response = await chrome.runtime.sendMessage({
     type: 'recording/start',
-    payload: { port, tabId: currentTabId, name, round, projectSlug }
+    payload: { port, tabId: currentTabId, name, projectSlug }
   });
 
   if (response.ok) {

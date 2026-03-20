@@ -1,10 +1,10 @@
 import express from 'express';
 import cors from 'cors';
 import { resolve, join, dirname } from 'path';
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readFileSync, rmSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { loadConfig, writeConfig } from './config.js';
-import { loadRegistry, getConfigPath, getOutputDir, getProjectDir, createProject, slugify } from './registry.js';
+import { loadRegistry, getConfigPath, getScreenshotDir, getJourneyDir, getProjectDir, getMapDir, createProject, slugify } from './registry.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -18,17 +18,14 @@ export async function startServer(opts) {
   // In-memory recording state
   const state = {
     isRecording: false,
-    round: 1,
     baseUrl: null,
     name: '',
-    projectSlug: '',      // which project to write config to
+    projectSlug: '',
     pages: new Map(),
     edges: [],
     lastPageId: null,
-    lastClickText: null,
   };
 
-  // Track in-progress capture
   let captureInProgress = false;
 
   function pathToId(urlPath) {
@@ -55,28 +52,38 @@ export async function startServer(opts) {
   });
 
   app.post('/api/projects', (req, res) => {
-    const { name, baseUrl } = req.body;
+    const { name } = req.body;
     if (!name) {
       return res.status(400).json({ error: 'Name is required' });
     }
     try {
       const slug = slugify(name);
-      createProject({ slug, name, baseUrl });
+      createProject(slug);
+      res.json({ slug, name });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
 
-      const configPath = getConfigPath(slug);
-      if (!existsSync(configPath)) {
-        const config = {
-          name,
-          baseUrl: baseUrl || 'http://localhost:3000',
-          viewport: { width: 1280, height: 900 },
-          round: 1,
-          pages: [],
-          journeys: []
-        };
-        writeConfig(configPath, config);
-      }
+  app.delete('/api/journeys/:project/:journey', (req, res) => {
+    const { project, journey } = req.params;
+    if (!project || !journey) {
+      return res.status(400).json({ error: 'project and journey are required' });
+    }
 
-      res.json({ slug, name, baseUrl });
+    const projectDir = resolve(getProjectDir(project));
+    const journeyDir = resolve(getJourneyDir(project, journey));
+
+    if (!journeyDir.startsWith(projectDir)) {
+      return res.status(403).json({ error: 'Invalid journey path' });
+    }
+    if (!existsSync(journeyDir)) {
+      return res.status(404).json({ error: 'Journey not found' });
+    }
+
+    try {
+      rmSync(journeyDir, { recursive: true, force: true });
+      res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
@@ -85,12 +92,14 @@ export async function startServer(opts) {
   // --- Config endpoint ---
 
   app.get('/api/config', (req, res) => {
-    const slug = req.query.project;
-    if (!slug) return res.status(400).json({ error: 'project query param required' });
+    const { project, journey } = req.query;
+    if (!project || !journey) {
+      return res.status(400).json({ error: 'project and journey query params required' });
+    }
 
-    const cfgPath = getConfigPath(slug);
+    const cfgPath = getConfigPath(project, journey);
     if (!existsSync(cfgPath)) {
-      return res.json({ error: 'No config found', pages: [], journeys: [] });
+      return res.json({ error: 'No config found', pages: [], steps: [] });
     }
     try {
       const config = loadConfig(cfgPath);
@@ -103,16 +112,16 @@ export async function startServer(opts) {
   // --- Screenshot endpoints ---
 
   app.get('/api/screenshots', (req, res) => {
-    const { project: slug, round, file } = req.query;
-    if (!slug) return res.status(400).json({ error: 'project query param required' });
+    const { project, journey, file } = req.query;
+    if (!project || !journey) {
+      return res.status(400).json({ error: 'project and journey query params required' });
+    }
 
-    const screenshotDir = join(getOutputDir(slug), 'screenshots', `round-${round || 1}`);
+    const screenshotDir = getScreenshotDir(project, journey);
 
-    // If a file is requested, serve it directly
     if (file) {
       const filePath = resolve(screenshotDir, file);
-      // Security: ensure path is within the project
-      if (!filePath.startsWith(getProjectDir(slug))) {
+      if (!filePath.startsWith(getJourneyDir(project, journey))) {
         return res.status(403).json({ error: 'Invalid path' });
       }
       if (!existsSync(filePath)) {
@@ -121,7 +130,6 @@ export async function startServer(opts) {
       return res.sendFile(filePath);
     }
 
-    // Otherwise return the manifest
     const manifestPath = join(screenshotDir, 'manifest.json');
     if (!existsSync(manifestPath)) {
       return res.json([]);
@@ -134,19 +142,124 @@ export async function startServer(opts) {
     }
   });
 
+  app.get('/api/screenshots/:project/:journey/:file', (req, res) => {
+    const { project, journey, file } = req.params;
+    if (!project || !journey || !file) {
+      return res.status(400).json({ error: 'project, journey, and file are required' });
+    }
+
+    const screenshotDir = getScreenshotDir(project, journey);
+    const filePath = resolve(screenshotDir, file);
+    if (!filePath.startsWith(screenshotDir)) {
+      return res.status(403).json({ error: 'Invalid path' });
+    }
+    if (!existsSync(filePath)) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+    return res.sendFile(filePath);
+  });
+
+  // --- Map endpoints ---
+
+  app.get('/api/map', (req, res) => {
+    const { project, journey } = req.query;
+    if (!project || !journey) {
+      return res.status(400).json({ error: 'project and journey query params required' });
+    }
+
+    const mapDir = getMapDir(project, journey);
+    const mapPath = join(mapDir, 'journey-map.html');
+    res.json({
+      exists: existsSync(mapPath),
+      url: `/api/maps/${encodeURIComponent(project)}/${encodeURIComponent(journey)}/journey-map.html`
+    });
+  });
+
+  app.post('/api/map', async (req, res) => {
+    const { project, journey, embedScreenshots = true, format = 'html' } = req.body;
+    if (!project || !journey) {
+      return res.status(400).json({ error: 'project and journey are required' });
+    }
+
+    const cfgPath = getConfigPath(project, journey);
+    if (!existsSync(cfgPath)) {
+      return res.status(404).json({ error: 'No config found for this journey' });
+    }
+
+    try {
+      const { map } = await import('./map.js');
+      await map({
+        config: cfgPath,
+        mapDir: getJourneyDir(project, journey),
+        screenshotDir: getScreenshotDir(project, journey),
+        format,
+        embedScreenshots,
+        fullScreenshotUrlForFile: (file) =>
+          `/api/screenshots/${encodeURIComponent(project)}/${encodeURIComponent(journey)}/${encodeURIComponent(file)}`
+      });
+      res.json({
+        ok: true,
+        url: `/api/maps/${encodeURIComponent(project)}/${encodeURIComponent(journey)}/journey-map.html`
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/maps/:project/:journey/:file', (req, res) => {
+    const { project, journey, file } = req.params;
+    if (!project || !journey || !file) {
+      return res.status(400).json({ error: 'project, journey, and file are required' });
+    }
+
+    const mapDir = resolve(getMapDir(project, journey));
+    const filePath = resolve(mapDir, file);
+    if (!filePath.startsWith(mapDir)) {
+      return res.status(403).json({ error: 'Invalid path' });
+    }
+    if (!existsSync(filePath)) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+    return res.sendFile(filePath);
+  });
+
+  app.get('/api/maps/:project/:journey/:folder/:file', (req, res) => {
+    const { project, journey, folder, file } = req.params;
+    if (!project || !journey || !folder || !file) {
+      return res.status(400).json({ error: 'project, journey, folder, and file are required' });
+    }
+
+    if (folder !== 'thumbs') {
+      return res.status(404).json({ error: 'Unknown map asset folder' });
+    }
+
+    const mapDir = resolve(getMapDir(project, journey));
+    const filePath = resolve(join(mapDir, folder, file));
+    if (!filePath.startsWith(mapDir)) {
+      return res.status(403).json({ error: 'Invalid path' });
+    }
+    if (!existsSync(filePath)) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+    return res.sendFile(filePath);
+  });
+
   // --- Capture SSE endpoint ---
 
   app.get('/api/capture/events', async (req, res) => {
-    const { project: slug, round, journey } = req.query;
-    if (!slug) return res.status(400).json({ error: 'project query param required' });
-    if (captureInProgress) return res.status(409).json({ error: 'Capture already in progress' });
-
-    const cfgPath = getConfigPath(slug);
-    if (!existsSync(cfgPath)) {
-      return res.status(404).json({ error: 'No config found for this project' });
+    const { project, journey } = req.query;
+    if (!project || !journey) {
+      return res.status(400).json({ error: 'project and journey query params required' });
+    }
+    if (captureInProgress) {
+      return res.status(409).json({ error: 'Capture already in progress' });
     }
 
-    // Set up SSE
+    const cfgPath = getConfigPath(project, journey);
+    if (!existsSync(cfgPath)) {
+      return res.status(404).json({ error: 'No config found for this journey' });
+    }
+
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
@@ -158,9 +271,7 @@ export async function startServer(opts) {
       const { capture } = await import('./capture.js');
       await capture({
         config: cfgPath,
-        out: getOutputDir(slug),
-        round: round || undefined,
-        journey: journey || undefined
+        screenshotDir: getScreenshotDir(project, journey)
       }, (event) => {
         res.write(`event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`);
       });
@@ -177,16 +288,17 @@ export async function startServer(opts) {
   // --- Deploy endpoint ---
 
   app.post('/api/deploy', async (req, res) => {
-    const { project: slug, round } = req.body;
-    if (!slug) return res.status(400).json({ error: 'project slug is required' });
+    const { project, journey } = req.body;
+    if (!project || !journey) {
+      return res.status(400).json({ error: 'project and journey are required' });
+    }
 
-    const cfgPath = getConfigPath(slug);
+    const cfgPath = getConfigPath(project, journey);
     try {
       const { deploy } = await import('./deploy.js');
       await deploy({
         config: cfgPath,
-        out: getOutputDir(slug),
-        round: round || undefined
+        screenshotDir: getScreenshotDir(project, journey)
       });
       res.json({ ok: true });
     } catch (err) {
@@ -206,15 +318,15 @@ export async function startServer(opts) {
 
   app.post('/api/recording/start', (req, res) => {
     state.isRecording = true;
-    state.round = req.body.round || 1;
     state.baseUrl = req.body.baseUrl || null;
     state.name = req.body.name || '';
     state.projectSlug = req.body.projectSlug || '';
     state.pages.clear();
     state.edges = [];
     state.lastPageId = null;
-    state.lastClickText = null;
-    console.log(`Recording started (round ${state.round})${state.baseUrl ? ` for ${state.baseUrl}` : ''}${state.projectSlug ? ` → projects/${state.projectSlug}` : ''}`);
+
+    const journeySlug = slugify(state.name);
+    console.log(`Recording started${state.baseUrl ? ` for ${state.baseUrl}` : ''}${state.projectSlug ? ` → projects/${state.projectSlug}/${journeySlug}` : ''}`);
     res.json({ ok: true });
   });
 
@@ -222,17 +334,17 @@ export async function startServer(opts) {
     state.isRecording = false;
     console.log('Recording stopped');
 
-    // Write to the selected project's config
     if (!state.projectSlug) {
       return res.status(400).json({ error: 'No project selected' });
     }
+    if (!state.name) {
+      return res.status(400).json({ error: 'No journey name set' });
+    }
 
-    const targetConfig = getConfigPath(state.projectSlug);
+    const journeySlug = slugify(state.name);
+    const targetConfig = getConfigPath(state.projectSlug, journeySlug);
 
-    // Ensure the project directory exists
-    createProject({ slug: state.projectSlug, name: state.name, baseUrl: state.baseUrl });
-
-    const config = buildConfig(state, targetConfig);
+    const config = buildConfig(state);
     const writtenPath = writeConfig(targetConfig, config);
 
     console.log(`\nRecorded ${state.pages.size} page(s) and ${state.edges.length} connection(s)`);
@@ -276,7 +388,7 @@ export async function startServer(opts) {
     }
 
     if (state.lastPageId && state.lastPageId !== pageId) {
-      const edgeLabel = clickText || state.lastClickText || '';
+      const edgeLabel = clickText || '';
       state.edges.push({
         from: state.lastPageId,
         to: pageId,
@@ -285,7 +397,6 @@ export async function startServer(opts) {
     }
 
     state.lastPageId = pageId;
-    state.lastClickText = clickText || null;
 
     console.log(`  nav: ${path}${title ? ` — ${title}` : ''}`);
     res.json({ ok: true });
@@ -324,6 +435,10 @@ export async function startServer(opts) {
     res.json({ ok: true });
   });
 
+  app.use('/api', (req, res) => {
+    res.status(404).json({ error: `API route not found: ${req.method} ${req.originalUrl}` });
+  });
+
   app.listen(port, () => {
     console.log(`\nPrototype Map`);
     console.log(`Dashboard:  http://localhost:${port}/dashboard/`);
@@ -334,11 +449,17 @@ export async function startServer(opts) {
 
 // --- Config building helpers ---
 
-function slugifyStr(str) {
-  return str
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '') || 'journey';
+function buildConfig(state) {
+  const pages = buildPagesList(state);
+  const steps = buildSteps(state);
+
+  return {
+    name: state.name || 'Recorded journey',
+    baseUrl: state.baseUrl || 'http://localhost:3000',
+    viewport: { width: 1280, height: 900 },
+    pages,
+    steps
+  };
 }
 
 function buildPagesList(state) {
@@ -351,9 +472,10 @@ function buildPagesList(state) {
     if (p.formSubmissions && p.formSubmissions.length > 0) {
       for (let i = 0; i < p.formSubmissions.length; i++) {
         const submission = p.formSubmissions[i];
+        const baseLabel = p.label || p.id;
         const stateEntry = {
           id: i === 0 ? 'submitted' : `submitted-${i + 1}`,
-          label: i === 0 ? 'Form submitted' : `Form submitted (${i + 1})`
+          label: i === 0 ? baseLabel : `${baseLabel} (${i + 1})`
         };
 
         if (submission.fields.length > 0) {
@@ -401,7 +523,7 @@ function buildPagesList(state) {
   });
 }
 
-function buildJourney(state) {
+function buildSteps(state) {
   const seenEdges = new Set();
   const uniqueEdges = state.edges.filter(e => {
     const key = `${e.from}->${e.to}`;
@@ -410,77 +532,9 @@ function buildJourney(state) {
     return true;
   });
 
-  const journeySteps = uniqueEdges.map(e => {
+  return uniqueEdges.map(e => {
     const step = { from: e.from, to: e.to };
     if (e.label) step.label = e.label;
     return step;
   });
-
-  if (journeySteps.length === 0) return null;
-
-  const label = state.name || 'Recorded journey';
-  return {
-    id: slugifyStr(label),
-    label,
-    round: state.round,
-    steps: journeySteps
-  };
-}
-
-function buildConfig(state, configPath) {
-  const pagesList = buildPagesList(state);
-  const newJourney = buildJourney(state);
-
-  let existingConfig = null;
-  if (existsSync(configPath)) {
-    try {
-      existingConfig = loadConfig(configPath);
-    } catch {
-      // ignore invalid existing config
-    }
-  }
-
-  if (existingConfig) {
-    existingConfig.round = state.round;
-
-    const existingPageMap = new Map(existingConfig.pages.map(p => [p.id, p]));
-    for (const page of pagesList) {
-      if (existingPageMap.has(page.id)) {
-        const existing = existingPageMap.get(page.id);
-        if (page.states) {
-          existing.states = page.states;
-        }
-        if (page.label) {
-          existing.label = page.label;
-        }
-      } else {
-        existingConfig.pages.push(page);
-      }
-    }
-
-    if (newJourney) {
-      existingConfig.journeys = existingConfig.journeys || [];
-      const existingIdx = existingConfig.journeys.findIndex(
-        j => j.label === newJourney.label
-      );
-      if (existingIdx >= 0) {
-        existingConfig.journeys[existingIdx] = newJourney;
-      } else {
-        existingConfig.journeys.push(newJourney);
-      }
-    }
-
-    return existingConfig;
-  }
-
-  const config = {
-    name: state.name || pagesList[0]?.label || 'Recorded prototype',
-    baseUrl: state.baseUrl || 'http://localhost:3000',
-    viewport: { width: 1280, height: 900 },
-    round: state.round,
-    pages: pagesList,
-    journeys: newJourney ? [newJourney] : []
-  };
-
-  return config;
 }
